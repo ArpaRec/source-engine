@@ -1,0 +1,5 @@
+"VertexLitGeneric"
+{
+	"$basetexture"	"models/props/milk_carton/milk_carton"
+	"$surfaceprop"	"papercup"
+}
