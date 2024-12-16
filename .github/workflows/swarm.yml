@@ -1,0 +1,27 @@
+name: AlienSwarmP2
+
+on: [workflow_dispatch]
+
+jobs:
+  build-windows-amd64:
+    runs-on: windows-2019
+
+    steps:
+    # Step 1: Checkout the code
+    - uses: actions/checkout@v2
+
+    # Step 2: Build the project
+    - name: Build windows-amd64
+      run: |
+        git submodule init && git submodule update
+        ./waf.bat configure -T release --prefix=swarm --build-games=swarm --disable-warns
+        ./waf.bat build -p -v
+        ./waf.bat install
+
+    # Step 3: Upload build artifacts
+    - name: Upload Executables
+      uses: actions/upload-artifact@v3
+      with:
+        name: swarm_build
+        path: |
+          hl2/*
