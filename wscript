@@ -39,7 +39,7 @@ projects={
 		'engine',
 		'engine/voice_codecs/minimp3',
 		'filesystem',
-#		'game/client',
+		'game/client',
 		'game/server',
 		'gameui',
 		'inputsystem',
