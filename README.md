@@ -5,6 +5,7 @@
 [![GitHub Actions Status](https://github.com/ArpaRec/source-engine/actions/workflows/portal.yml/badge.svg)](https://github.com/ArpaRec/source-engine/actions/workflows/portal.yml)\
 [![GitHub Actions Status](https://github.com/ArpaRec/source-engine/actions/workflows/hl1.yml/badge.svg)](https://github.com/ArpaRec/source-engine/actions/workflows/hl1.yml)\
 [![GitHub Actions Status](https://github.com/ArpaRec/source-engine/actions/workflows/cstrike.yml/badge.svg)](https://github.com/ArpaRec/source-engine/actions/workflows/cstrike.yml)
+[![GitHub Actions Status](https://github.com/ArpaRec/source-engine/actions/workflows/dod.yml/badge.svg)](https://github.com/ArpaRec/source-engine/actions/workflows/dod.yml)
  
 
 Source is a 3D game engine developed by Valve.
