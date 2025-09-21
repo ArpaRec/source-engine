@@ -19,6 +19,7 @@ class CItemBattery : public CItem
 {
 public:
 	DECLARE_CLASS( CItemBattery, CItem );
+	DECLARE_SERVERCLASS();
 
 	void Spawn( void )
 	{ 
@@ -39,6 +40,9 @@ public:
 		return ( pHL2Player && pHL2Player->ApplyBattery() );
 	}
 };
+
+IMPLEMENT_SERVERCLASS_ST(CItemBattery, DT_ItemBattery)
+END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS(item_battery, CItemBattery);
 PRECACHE_REGISTER(item_battery);

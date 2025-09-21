@@ -1259,7 +1259,7 @@ void CBaseEntity::ValidateEntityConnections()
 			typedescription_t *dataDesc = &dmap->dataDesc[i];
 			if ( ( dataDesc->fieldType == FIELD_CUSTOM ) && ( dataDesc->flags & FTYPEDESC_OUTPUT ) )
 			{
-				CBaseEntityOutput *pOutput = (CBaseEntityOutput *)((intp)this + (intp)dataDesc->fieldOffset[0]);
+				CBaseEntityOutput *pOutput = (CBaseEntityOutput *)((int)this + (int)dataDesc->fieldOffset[0]);
 				if ( pOutput->NumberOfElements() )
 					return;
 			}
@@ -1292,7 +1292,7 @@ void CBaseEntity::FireNamedOutput( const char *pszOutput, variant_t variant, CBa
 			typedescription_t *dataDesc = &dmap->dataDesc[i];
 			if ( ( dataDesc->fieldType == FIELD_CUSTOM ) && ( dataDesc->flags & FTYPEDESC_OUTPUT ) )
 			{
-				CBaseEntityOutput *pOutput = ( CBaseEntityOutput * )( ( intp )this + ( intp )dataDesc->fieldOffset[0] );
+				CBaseEntityOutput *pOutput = ( CBaseEntityOutput * )( ( int )this + ( int )dataDesc->fieldOffset[0] );
 				if ( !Q_stricmp( dataDesc->externalName, pszOutput ) )
 				{
 					pOutput->FireOutput( variant, pActivator, pCaller, flDelay );
@@ -3365,7 +3365,7 @@ void CBaseEntity::FunctionCheck( void *pFunction, const char *name )
 	// Note, if you crash here and your class is using multiple inheritance, it is
 	// probably the case that CBaseEntity (or a descendant) is not the first
 	// class in your list of ancestors, which it must be.
-	if (pFunction && !UTIL_FunctionToName( GetDataDescMap(), *(inputfunc_t*)pFunction ) )
+	if (pFunction && !UTIL_FunctionToName( GetDataDescMap(), (inputfunc_t *)pFunction ) )
 	{
 		Warning( "FUNCTION NOT IN TABLE!: %s:%s (%08lx)\n", STRING(m_iClassname), name, (unsigned long)pFunction );
 		Assert(0);
@@ -3799,7 +3799,7 @@ void CBaseEntity::OnEntityEvent( EntityEvent_t event, void *pEventData )
 	{
 	case ENTITY_EVENT_WATER_TOUCH:
 		{
-			intp nContents = (intp)pEventData;
+			int nContents = (int)pEventData;
 			if ( !nContents || (nContents & CONTENTS_WATER) )
 			{
 				++m_nWaterTouch;
@@ -3813,7 +3813,7 @@ void CBaseEntity::OnEntityEvent( EntityEvent_t event, void *pEventData )
 
 	case ENTITY_EVENT_WATER_UNTOUCH:
 		{
-			intp nContents = (intp)pEventData;
+			int nContents = (int)pEventData;
 			if ( !nContents || (nContents & CONTENTS_WATER) )
 			{
 				--m_nWaterTouch;
@@ -5316,6 +5316,25 @@ void CC_Ent_FireTarget( const CCommand& args )
 }
 static ConCommand firetarget("firetarget", CC_Ent_FireTarget, 0, FCVAR_CHEAT);
 
+static bool UtlStringLessFunc( const CUtlString &lhs, const CUtlString &rhs )
+{
+	return Q_stricmp( lhs.String(), rhs.String() ) < 0;
+}
+
+static const char* g_Special[3] = {
+	"!picker",
+	"!player",
+	"!self"
+};
+
+static const char* g_CustomFuncs[5] = {
+	"origin",
+	"angles",
+	"targetname",
+	"mins",
+	"maxs"
+};
+
 class CEntFireAutoCompletionFunctor : public ICommandCallback, public ICommandCompletionCallback
 {
 public:
@@ -5336,9 +5355,11 @@ public:
 		{
 			const char *target = "", *action = "Use";
 			variant_t value;
-			float delay = 0;
+			int delay = 0;
 
 			target = STRING( AllocPooledString(command.Arg( 1 ) ) );
+			if (target[0] == '#')
+				target++;
 
 			// Don't allow them to run anything on a point_servercommand unless they're the host player. Otherwise they can ent_fire
 			// and run any command on the server. Admittedly, they can only do the ent_fire if sv_cheats is on, but 
@@ -5370,7 +5391,8 @@ public:
 			}
 			if ( command.ArgC() >= 4 )
 			{
-				value.SetString( AllocPooledString(command.Arg( 3 )) );
+				const char* str = command.Arg(3);
+				value.SetString(AllocPooledString(str));
 			}
 			if ( command.ArgC() >= 5 )
 			{
@@ -5409,26 +5431,79 @@ public:
 
 		CUtlRBTree< CUtlString > symbols( 0, 0, UtlStringLessFunc );
 
-		CBaseEntity *pos = NULL;
-		while ( ( pos = gEntList.NextEnt( pos ) ) != NULL )
+		bool bIsClassname = false;
+		if (substring[0] == '#')
 		{
-			// Check target name against partial string
-			if ( pos->GetEntityName() == NULL_STRING )
-				continue;
+			bIsClassname = true;
+			substring++;
+			checklen--;
+		}
 
-			if ( Q_strnicmp( STRING( pos->GetEntityName() ), substring, checklen ) )
-				continue;
+		CBaseEntity* pos = NULL;
+		while ((pos = gEntList.NextEnt(pos)) != NULL)
+		{
+			bool bWasClassname = false;
 
-			CUtlString sym = STRING( pos->GetEntityName() );
-			int idx = symbols.Find( sym );
-			if ( idx == symbols.InvalidIndex() )
+			const char* name = STRING(pos->GetEntityName());
+			if (bIsClassname)
 			{
-				symbols.Insert( sym );
+				bWasClassname = true;
+				name = pos->GetClassname();
+			}
+
+			if (pos->GetEntityName() == NULL_STRING)
+			{
+				name = pos->GetClassname();
+				if (!name)
+					continue;
+
+				bWasClassname = true;
+			}
+
+			if (Q_strnicmp(name, substring, checklen))
+			{
+				if (bWasClassname)
+					continue;
+				
+				name = pos->GetClassname();
+				if (Q_strnicmp(name, substring, checklen))
+					continue;
+
+				bWasClassname = true;
+			}
+
+			CUtlString sym;
+			if (bWasClassname)
+				sym = "#";
+
+			sym += name;
+
+			int idx = symbols.Find(sym);
+			if (idx == symbols.InvalidIndex())
+			{
+				symbols.Insert(sym);
 			}
 
 			// Too many
-			if ( symbols.Count() >= COMMAND_COMPLETION_MAXITEMS )
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
 				break;
+		}
+	
+		if (symbols.Count() < COMMAND_COMPLETION_MAXITEMS && !bIsClassname)
+		{
+			for (int i = 0; i < 3; i++)
+			{
+				const char* name = g_Special[i];
+				if (*substring)
+				{
+					if (Q_strnicmp(substring, name, Q_strlen(substring)))
+						continue;
+				}
+				CUtlString str = name;
+				int idx = symbols.Find(str);
+				if (idx == symbols.InvalidIndex())
+					symbols.Insert(str);
+			}
 		}
 
 		// Now fill in the results
@@ -5448,7 +5523,117 @@ public:
 		return symbols.Count();
 	}
 private:
-	int EntFire_AutoCompleteInput( const char *partial, CUtlVector< CUtlString > &commands )
+	int EntFire_AutoCompleteInput(const char* partial, CUtlVector< CUtlString >& commands)
+	{
+		const char* cmdname = "ent_fire";
+
+		char* substring = (char*)partial;
+		if (Q_strstr(partial, cmdname))
+		{
+			substring = (char*)partial + strlen(cmdname) + 1;
+		}
+
+		int checklen = 0;
+		char* space = Q_strstr(substring, " ");
+		if (!space)
+		{
+			Assert(!"CC_EntFireAutoCompleteInputFunc is broken\n");
+			return 0;
+		}
+
+		checklen = Q_strlen(substring);
+
+		char targetEntity[256];
+		targetEntity[0] = 0;
+		int nEntityNameLength = (space - substring);
+		Q_strncat(targetEntity, substring, sizeof(targetEntity), nEntityNameLength);
+
+		if (targetEntity[0] == '#')
+		{
+			for (int i = 0; i <= nEntityNameLength; i++)
+			{
+				targetEntity[i - 1] = targetEntity[i];
+			}
+		}
+
+		// Find the target entity by name
+		CBaseEntity* target = gEntList.FindEntityByName(NULL, targetEntity);
+		if (!target)
+		{
+			target = gEntList.FindEntityByClassname(NULL, targetEntity);
+			if (target == NULL)
+				return 0;
+		}
+
+		CUtlRBTree< CUtlString > symbols(0, 0, UtlStringLessFunc);
+
+		// Find the next portion of the text chain, if any (removing space)
+		int nInputNameLength = (checklen - nEntityNameLength - 1);
+
+		// Starting past the last space, this is the remainder of the string
+		char* inputPartial = (checklen > nEntityNameLength) ? (space + 1) : NULL;
+		if (Q_stristr(inputPartial, " "))
+		{
+			if (!Q_strnicmp(inputPartial, "addoutput", 9))
+				return EntFire_AutocompleteAddOutput(partial, commands);
+
+			return 0;
+		}
+
+		for (datamap_t* dmap = target->GetDataDescMap(); dmap != NULL; dmap = dmap->baseMap)
+		{
+			// Make sure we don't keep adding things in if the satisfied the limit
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+				break;
+
+			int c = dmap->dataNumFields;
+			for (int i = 0; i < c; i++)
+			{
+				typedescription_t* field = &dmap->dataDesc[i];
+
+				// Only want inputs
+				if (!(field->flags & FTYPEDESC_INPUT))
+					continue;
+
+				// See if we've got a partial string for the input name already
+				if (inputPartial != NULL)
+				{
+					if (Q_strnicmp(inputPartial, field->externalName, nInputNameLength))
+						continue;
+				}
+
+				CUtlString sym = field->externalName;
+
+				int idx = symbols.Find(sym);
+				if (idx == symbols.InvalidIndex())
+				{
+					symbols.Insert(sym);
+				}
+
+				// Too many items have been added
+				if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+					break;
+			}
+		}
+
+		// Now fill in the results
+		for (int i = symbols.FirstInorder(); i != symbols.InvalidIndex(); i = symbols.NextInorder(i))
+		{
+			const char* name = symbols[i].String();
+
+			char buf[512];
+			Q_strncpy(buf, name, sizeof(buf));
+			Q_strlower(buf);
+
+			CUtlString command;
+			command = CFmtStr("%s %s %s", cmdname, targetEntity, buf);
+			commands.AddToTail(command);
+		}
+
+		return symbols.Count();
+	}
+
+	int EntFire_AutocompleteAddOutput( const char *partial, CUtlVector< CUtlString > &commands )
 	{
 		const char *cmdname = "ent_fire";
 
@@ -5462,7 +5647,7 @@ private:
 		char *space = Q_strstr( substring, " " );
 		if ( !space )
 		{
-			Assert( !"CC_EntFireAutoCompleteInputFunc is broken\n" );
+			Assert( !"CC_EntFireAutoCompleteAddOutput is broken\n" );
 			return 0;
 		}
 
@@ -5473,56 +5658,286 @@ private:
 		int nEntityNameLength = (space-substring);
 		Q_strncat( targetEntity, substring, sizeof( targetEntity ), nEntityNameLength );
 
+		if (targetEntity[0] == '#')
+		{
+			for (int i = 0; i <= nEntityNameLength; i++)
+			{
+				targetEntity[i - 1] = targetEntity[i];
+			}
+		}
+
 		// Find the target entity by name
 		CBaseEntity *target = gEntList.FindEntityByName( NULL, targetEntity );
-		if ( target == NULL )
-			return 0;
+		if (!target)
+		{
+			target = gEntList.FindEntityByClassname(NULL, targetEntity);
+			if (target == NULL)
+				return 0;
+		}
 
 		CUtlRBTree< CUtlString > symbols( 0, 0, UtlStringLessFunc );
-
-		// Find the next portion of the text chain, if any (removing space)
-		int nInputNameLength = (checklen-nEntityNameLength-1);
 
 		// Starting past the last space, this is the remainder of the string
 		char *inputPartial = ( checklen > nEntityNameLength ) ? (space+1) : NULL;
 
-		for ( datamap_t *dmap = target->GetDataDescMap(); dmap != NULL; dmap = dmap->baseMap )
+		char* output = Q_strstr(inputPartial, " ");
+		if (!output)
+			return 0;
+
+		int nOutputLen = 0;
+
+		output++;
+		if (Q_strstr(output, " "))
+		{
+			return EntFire_AutocompleteAddOutput_Entity(partial, commands);
+		}
+
+		if (*output != '"')
+			return 0;
+		
+		output++;
+
+		nOutputLen = Q_strlen(output);
+
+		for (datamap_t* dmap = target->GetDataDescMap(); dmap != NULL; dmap = dmap->baseMap)
 		{
 			// Make sure we don't keep adding things in if the satisfied the limit
-			if ( symbols.Count() >= COMMAND_COMPLETION_MAXITEMS )
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
 				break;
 
 			int c = dmap->dataNumFields;
-			for ( int i = 0; i < c; i++ )
+			for (int i = 0; i < c; i++)
 			{
-				typedescription_t *field = &dmap->dataDesc[ i ];
-
-				// Only want inputs
-				if ( !( field->flags & FTYPEDESC_INPUT ) )
-					continue;
-
-				// Only want input functions
-				if ( field->flags & FTYPEDESC_SAVE )
+				typedescription_t* field = &dmap->dataDesc[i];
+				if (!field->externalName)
 					continue;
 
 				// See if we've got a partial string for the input name already
-				if ( inputPartial != NULL )
+				if (*output != NULL)
 				{
-					if ( Q_strnicmp( inputPartial, field->externalName, nInputNameLength ) )
+					if (Q_strnicmp(output, field->externalName, nOutputLen))
 						continue;
 				}
 
-				CUtlString sym = field->externalName;
 
-				int idx = symbols.Find( sym );
-				if ( idx == symbols.InvalidIndex() )
+				CUtlString sym = "\"";
+				sym += field->externalName;
+
+				int idx = symbols.Find(sym);
+				if (idx == symbols.InvalidIndex())
 				{
-					symbols.Insert( sym );
+					symbols.Insert(sym);
 				}
 
 				// Too many items have been added
-				if ( symbols.Count() >= COMMAND_COMPLETION_MAXITEMS )
+				if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
 					break;
+			}
+		}
+
+		if (symbols.Count() < COMMAND_COMPLETION_MAXITEMS)
+		{
+ 			for (int j = 0; j < 5; j++)
+			{
+				const char* name = g_CustomFuncs[j];
+				if (*output)
+				{
+					if (Q_strnicmp(output, name, nOutputLen))
+						continue;
+				}
+
+				CUtlString sym = "\"";
+				sym += name;
+
+				int idx = symbols.Find(sym);
+				if (idx == symbols.InvalidIndex())
+					symbols.Insert(sym);
+			}
+		}
+
+		// Now fill in the results
+		for ( int i = symbols.FirstInorder(); i != symbols.InvalidIndex(); i = symbols.NextInorder( i ) )
+		{
+			const char *name = symbols[ i ].String();
+
+			char buf[ 512 ];
+			Q_strncpy( buf, name, sizeof( buf ) );
+			Q_strlower( buf );
+
+			char tmp[512];
+			Q_strcpy(tmp, inputPartial);
+			for (int j = 0; j < Q_strlen(tmp); j++)
+			{
+				if (isspace(tmp[j]))
+				{
+					tmp[j] = '\0';
+					break;
+				}
+			}
+
+			CUtlString command = CFmtStr( "%s %s %s %s", cmdname, targetEntity, tmp, buf);
+			commands.AddToTail( command );
+		}
+
+		return symbols.Count();
+	}
+	
+	int EntFire_AutocompleteAddOutput_Entity( const char *partial, CUtlVector< CUtlString > &commands )
+	{
+		const char *cmdname = "ent_fire";
+
+		char tmpbuf[1028];
+		Q_strcpy(tmpbuf, partial);
+
+		char *substring = (char *)partial;
+		if ( Q_strstr( partial, cmdname ) )
+		{
+			substring = (char *)partial + strlen( cmdname ) + 1;
+		}
+
+		int checklen = 0;
+		char *space = Q_strstr( substring, " " );
+		if ( !space )
+		{
+			Assert( !"CC_EntFireAutoCompleteAddOutput is broken\n" );
+			return 0;
+		}
+
+		checklen = Q_strlen( substring );
+
+		char targetEntity[ 256 ];
+		targetEntity[0] = 0;
+		int nEntityNameLength = (space-substring);
+		Q_strncat( targetEntity, substring, sizeof( targetEntity ), nEntityNameLength );
+
+		if (targetEntity[0] == '#')
+		{
+			for (int i = 0; i <= nEntityNameLength; i++)
+			{
+				targetEntity[i - 1] = targetEntity[i];
+			}
+		}
+
+		// Find the target entity by name
+		CBaseEntity *target = gEntList.FindEntityByName( NULL, targetEntity );
+		if (!target)
+		{
+			target = gEntList.FindEntityByClassname(NULL, targetEntity);
+			if (target == NULL)
+				return 0;
+		}
+
+		CUtlRBTree< CUtlString > symbols( 0, 0, UtlStringLessFunc );
+
+		// Starting past the last space, this is the remainder of the string
+		char *inputPartial = ( checklen > nEntityNameLength ) ? (space+1) : NULL;
+
+		char* output = Q_strstr(inputPartial, " ");
+		if (!output)
+			return 0;
+
+		int nOutputLen = 0;
+
+		output++;
+		if (*output != '"')
+			return 0;
+
+		output++;
+		char* tmp = output;
+		while (isspace(*tmp))
+			tmp++;
+
+		char* entspace = Q_strstr(tmp, " ");
+		(*entspace) = '\0';
+		if (!entspace)
+			return 0;
+
+		entspace++;
+		if (Q_strstr(entspace, ","))
+			return EntFire_AutocompleteAddOutput_Entity_Output(tmpbuf, commands);
+
+		nOutputLen = Q_strlen(output) - 1;
+
+		bool bFound = false;
+		for (datamap_t* dmap = target->GetDataDescMap(); dmap != NULL; dmap = dmap->baseMap)
+		{
+			// Make sure we don't keep adding things in if the satisfied the limit
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+				break;
+
+			int c = dmap->dataNumFields;
+			for (int i = 0; i < c; i++)
+			{
+				typedescription_t* field = &dmap->dataDesc[i];
+				if (!field->externalName)
+					continue;
+				// Only want inputs
+
+				if (!(field->fieldType == FIELD_CUSTOM))
+					continue;
+				
+				// See if we've got a partial string for the input name already
+				if (Q_strnicmp(field->externalName, output, nOutputLen))
+					continue;
+
+				bFound = true;
+				break;
+			}
+			if (bFound)
+				break;
+		}
+
+		if (!bFound)
+			return 0;
+
+		int entlen = Q_strlen(entspace);
+		CBaseEntity* pos = NULL;
+		while ((pos = gEntList.NextEnt(pos)) != NULL)
+		{
+			const char* name = STRING(pos->GetEntityName());
+			if (pos->GetEntityName() == NULL_STRING)
+			{
+				name = pos->GetClassname();
+				if (!name)
+					continue;
+			}
+
+			if (*entspace)
+			{
+				if (Q_strnicmp(name, entspace, entlen))
+				{
+					name = pos->GetClassname();
+					if (Q_strnicmp(name, entspace, checklen))
+						continue;
+				}
+			}
+
+			CUtlString sym = name;
+			int idx = symbols.Find(sym);
+			if (idx == symbols.InvalidIndex())
+			{
+				symbols.Insert(sym);
+			}
+
+			// Too many
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+				break;
+		}
+
+		if (symbols.Count() < COMMAND_COMPLETION_MAXITEMS)
+		{
+			for (int i = 0; i < 3; i++)
+			{
+				const char* name = g_Special[i];
+				if (*entspace)
+				{
+					if (Q_strnicmp(entspace, name, Q_strlen(entspace)))
+						continue;
+				}
+				CUtlString str = name;
+				int idx = symbols.Find(str);
+				if (idx == symbols.InvalidIndex())
+					symbols.Insert(str);
 			}
 		}
 
@@ -5536,7 +5951,150 @@ private:
 			Q_strlower( buf );
 
 			CUtlString command;
-			command = CFmtStr( "%s %s %s", cmdname, targetEntity, buf );
+			command = CFmtStr( "%s %s %s %s", cmdname, targetEntity, inputPartial, buf);
+			commands.AddToTail( command );
+		}
+
+		return symbols.Count();
+	}
+	
+	int EntFire_AutocompleteAddOutput_Entity_Output( const char *partial, CUtlVector< CUtlString > &commands )
+	{
+		const char *cmdname = "ent_fire";
+
+		char *substring = (char *)partial;
+		if ( Q_strstr( partial, cmdname ) )
+		{
+			substring = (char *)partial + strlen( cmdname ) + 1;
+		}
+
+		int checklen = 0;
+		char *space = Q_strstr( substring, " " );
+		if ( !space )
+		{
+			Assert( !"CC_EntFireAutoCompleteAddOutput is broken\n" );
+			return 0;
+		}
+
+		checklen = Q_strlen( substring );
+
+		char targetEntity[ 256 ];
+		targetEntity[0] = 0;
+		int nEntityNameLength = (space-substring);
+		Q_strncat( targetEntity, substring, sizeof( targetEntity ), nEntityNameLength );
+
+		if (targetEntity[0] == '#')
+		{
+			for (int i = 0; i <= nEntityNameLength; i++)
+			{
+				targetEntity[i - 1] = targetEntity[i];
+			}
+		}
+
+		// Find the target entity by name
+		CBaseEntity *target = gEntList.FindEntityByName( NULL, targetEntity );
+		if (!target)
+		{
+			target = gEntList.FindEntityByClassname(NULL, targetEntity);
+			if (target == NULL)
+				return 0;
+		}
+
+		CUtlRBTree< CUtlString > symbols( 0, 0, UtlStringLessFunc );
+
+		// Starting past the last space, this is the remainder of the string
+		char *inputPartial = ( checklen > nEntityNameLength ) ? (space+1) : NULL;
+
+		char* output = Q_strstr(inputPartial, " ");
+		if (!output)
+			return 0;
+
+		int nOutputLen = 0;
+
+		output++;
+		if (*output != '"')
+			return 0;
+
+		output++;
+		char* tmp = output;
+		while (isspace(*tmp))
+			tmp++;
+
+		char* entspace = Q_strstr(tmp, " ");
+		if (!entspace)
+			return 0;
+
+		(*entspace) = '\0';
+		if (!entspace)
+			return 0;
+
+		entspace++;
+		const char* comma = Q_strstr(entspace, ",");
+		if (!comma)
+			return 0;
+
+		comma++;
+		int commalen = Q_strlen(comma);
+		commalen;
+		nOutputLen = Q_strlen(output) - 1;
+
+		for (datamap_t* dmap = target->GetDataDescMap(); dmap != NULL; dmap = dmap->baseMap)
+		{
+			// Make sure we don't keep adding things in if the satisfied the limit
+			if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+				break;
+
+			int c = dmap->dataNumFields;
+			for (int i = 0; i < c; i++)
+			{
+				typedescription_t* field = &dmap->dataDesc[i];
+
+				// Only want inputs
+				if (!(field->flags & FTYPEDESC_INPUT))
+					continue;
+
+				// See if we've got a partial string for the input name already
+				if (*comma != NULL)
+				{
+					if (Q_strnicmp(comma, field->externalName, commalen))
+						continue;
+				}
+
+				CUtlString sym = field->externalName;
+
+				int idx = symbols.Find(sym);
+				if (idx == symbols.InvalidIndex())
+				{
+					symbols.Insert(sym);
+				}
+
+				// Too many items have been added
+				if (symbols.Count() >= COMMAND_COMPLETION_MAXITEMS)
+					break;
+			}
+		}
+		
+		char tmpbuffer[512];
+		Q_strcpy(tmpbuffer, entspace);
+		int j = Q_strlen(tmpbuffer);
+		for(int i = 0; i < j; i++)
+		{
+			if (tmpbuffer[i] == ',')
+				tmpbuffer[i] = '\0';
+		}
+
+		// Now fill in the results
+		for ( int i = symbols.FirstInorder(); i != symbols.InvalidIndex(); i = symbols.NextInorder( i ) )
+		{
+			const char *name = symbols[ i ].String();
+
+			char buf[ 512 ];
+			Q_strncpy( buf, name, sizeof( buf ) );
+			Q_strlower( buf );
+
+
+			CUtlString command;
+			command = CFmtStr( "%s %s %s %s,%s", cmdname, targetEntity, inputPartial, tmpbuffer, buf);
 			commands.AddToTail( command );
 		}
 

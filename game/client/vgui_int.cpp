@@ -22,8 +22,14 @@
 #include <vgui_controls/Panel.h>
 #include <KeyValues.h>
 #include "filesystem.h"
-#include "touch.h"
 #include "matsys_controls/matsyscontrols.h"
+
+//Alone Mod
+#include "AloneMod/IBackgroundPanel.h"
+#include "AloneMod/ISongPanel.h"
+#include "AloneMod/IOptionsPanel.h"
+#include "AloneMod/INewGamePanel.h"
+#include "AloneMod/IEffectsPanel.h"
 
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
@@ -130,7 +136,6 @@ static void VGui_VideoMode_AdjustForModeChange( void )
 	fps->Destroy();
 	messagechars->Destroy();
 	loadingdisc->Destroy();
-	touch_panel->Destroy();
 
 	// Recreate our panels.
 	VPANEL gameToolParent = enginevgui->GetPanel( PANEL_CLIENTDLL_TOOLS );
@@ -144,7 +149,6 @@ static void VGui_VideoMode_AdjustForModeChange( void )
 
 	// Debugging or related tool
 	fps->Create( toolParent );
-	touch_panel->Create( toolParent );
 #if defined( TRACK_BLOCKING_IO )
 	iopanel->Create( gameDLLPanel );
 #endif
@@ -200,6 +204,16 @@ void VGui_CreateGlobalPanels( void )
 {
 	VPANEL gameToolParent = enginevgui->GetPanel( PANEL_CLIENTDLL_TOOLS );
 	VPANEL toolParent = enginevgui->GetPanel( PANEL_TOOLS );
+
+	//Alone Mod
+	VPANEL GameUiDll = enginevgui->GetPanel(PANEL_GAMEUIDLL);
+	backgroundpanel->Create(GameUiDll);
+	optionspanel->Create(GameUiDll);
+	newgamepanel->Create(GameUiDll);
+	oldnewgamepanel->Create(GameUiDll);
+	effectspanel->Create(toolParent);
+	songpanel->Create(toolParent);
+
 #if defined( TRACK_BLOCKING_IO )
 	VPANEL gameDLLPanel = enginevgui->GetPanel( PANEL_GAMEDLL );
 #endif
@@ -210,8 +224,6 @@ void VGui_CreateGlobalPanels( void )
 
 	// Debugging or related tool
 	fps->Create( toolParent );
-	touch_panel->Create( toolParent );
-
 #if defined( TRACK_BLOCKING_IO )
 	iopanel->Create( gameDLLPanel );
 #endif
@@ -229,6 +241,14 @@ void VGui_CreateGlobalPanels( void )
 
 void VGui_Shutdown()
 {
+	//Alone Mod
+	backgroundpanel->Destroy();
+	songpanel->Destroy();
+	optionspanel->Destroy();
+	newgamepanel->Destroy();
+	oldnewgamepanel->Destroy();
+	effectspanel->Destroy();
+
 	VGUI_DestroyClientDLLRootPanel();
 
 #ifndef _X360
@@ -241,7 +261,6 @@ void VGui_Shutdown()
 	iopanel->Destroy();
 #endif
 	fps->Destroy();
-	touch_panel->Destroy();
 
 	messagechars->Destroy();
 	loadingdisc->Destroy();
@@ -271,13 +290,11 @@ void VGui_PreRender()
 	if ( IsPC() )
 	{
 		loadingdisc->SetLoadingVisible( engine->IsDrawingLoadingImage() && !engine->IsPlayingDemo() );
-		
-		bool bShowPausedImage = !enginevgui->IsGameUIVisible() && cl_showpausedimage.GetBool() && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo();
 #if !defined( TF_CLIENT_DLL )
-		loadingdisc->SetPausedVisible( bShowPausedImage  );
+		loadingdisc->SetPausedVisible( !enginevgui->IsGameUIVisible() && cl_showpausedimage.GetBool() && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo() );
 #else
-		bShowPausedImage &= ( TFGameRules() && !TFGameRules()->IsInTraining() );
-		loadingdisc->SetPausedVisible( bShowPausedImage );
+		bool bShowPausedImage = cl_showpausedimage.GetBool() && ( TFGameRules() && !TFGameRules()->IsInTraining() );
+		loadingdisc->SetPausedVisible( !enginevgui->IsGameUIVisible() && bShowPausedImage && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo() );
 #endif
 	}
 }

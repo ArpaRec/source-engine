@@ -1606,7 +1606,17 @@ void CWeaponRPG::PrimaryAttack( void )
 
 	pOwner->EyeVectors( &vForward, &vRight, &vUp );
 
-	Vector	muzzlePoint = pOwner->Weapon_ShootPosition() + vForward * 12.0f + vRight * 6.0f + vUp * -3.0f;
+	static ConVar* amod_mirrored = cvar->FindVar("amod_mirrored");
+	Vector muzzlePoint = Vector();
+	if (!amod_mirrored)
+		muzzlePoint = pOwner->Weapon_ShootPosition() + vForward * 12.0f + vRight * 6.0f + vUp * -3.0f;
+	else
+	{
+		if (amod_mirrored->GetBool())
+			muzzlePoint = pOwner->Weapon_ShootPosition() + vForward * 12.0f - vRight * 6.0f + vUp * -3.0f;
+		else
+			muzzlePoint = pOwner->Weapon_ShootPosition() + vForward * 12.0f + vRight * 6.0f + vUp * -3.0f;
+	}
 
 	QAngle vecAngles;
 	VectorAngles( vForward, vecAngles );

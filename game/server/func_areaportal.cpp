@@ -45,8 +45,9 @@ public:
 	DECLARE_DATADESC();
 
 private:
-	bool UpdateState( void );
-	int m_state;
+	bool	UpdateState( void );
+
+	int		m_state;
 };
 
 LINK_ENTITY_TO_CLASS( func_areaportal, CAreaPortal );
@@ -177,6 +178,9 @@ bool CAreaPortal::KeyValue( const char *szKeyName, const char *szValue )
 
 bool CAreaPortal::UpdateState()
 {
+	if (!Q_stricmp(gpGlobals->mapname.ToCStr(), "ep1_citadel_03_d"))
+		m_state = AREAPORTAL_OPEN;
+
 	engine->SetAreaPortalState( m_portalNumber, m_state );
 	return !!m_state;
 }

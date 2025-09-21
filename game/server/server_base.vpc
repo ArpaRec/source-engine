@@ -16,6 +16,7 @@ $MacroRequired "GAMENAME"
 $include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
 $include "$SRCDIR\vpc_scripts\protobuf_builder.vpc"
 $Include "$SRCDIR\vpc_scripts\source_replay.vpc"	[$TF]
+$Include "$SRCDIR\game\protobuf_include.vpc"
 
 $Configuration	"Debug"
 {
@@ -51,7 +52,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;.\;$SRCDIR\game\shared;$SRCDIR\utils\common;$SRCDIR\game\shared\econ;$SRCDIR\game\server\NextBot"
-		$PreprocessorDefinitions		"$BASE;GAME_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead"
+		$PreprocessorDefinitions		"$BASE;GAME_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;sprintf=use_Q_snprintf_instead_of_sprintf;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead"
 		$PreprocessorDefinitions		"$BASE;SWDS" [$POSIX]
 		$PreprocessorDefinitions		"$BASE;fopen=dont_use_fopen" [$WINDOWS||$X360]
 		$Create/UsePrecompiledHeader	"Use Precompiled Header (/Yu)"
@@ -78,6 +79,26 @@ $Project
 	
 	$Folder	"Source Files"
 	{
+		$Folder "Alone Mod"
+		{
+			$Folder "Convars"
+			{
+				$File "$SRCDIR\game\shared\AloneMod\AmodCvars.h"
+				$File "$SRCDIR\game\shared\AloneMod\AmodCvars.cpp"
+			}
+			$Folder "Game Systems"
+			{
+				$File "$SRCDIR\game\server\AloneMod\GlobalAmodSystems.cpp"
+				$File "$SRCDIR\game\server\AloneMod\AmodServerCommands.cpp"
+				$File "$SRCDIR\game\server\AloneMod\AmodRainSystem.cpp"
+			}
+			$Folder "Shared Definitions"
+			{
+				$File "$SRCDIR\game\shared\AloneMod\Amod_SharedDefs.cpp"
+				$File "$SRCDIR\game\shared\AloneMod\Amod_SharedDefs.h"
+			}
+			$file "$SRCDIR\game\server\episodic\prop_scalable.cpp"
+		}
 		$File	"$SRCDIR\game\shared\achievement_saverestore.cpp"
 		$File	"$SRCDIR\game\shared\achievement_saverestore.h"
 		$File	"$SRCDIR\game\shared\achievementmgr.cpp"

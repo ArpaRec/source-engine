@@ -464,6 +464,11 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 //-----------------------------------------------------------------------------
 float g_fMaxViewModelLag = 1.5f;
 
+//amod mirror fix
+#ifdef CLIENT_DLL
+#include "AloneMod/AmodCvars.h"
+#endif
+
 void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& original_angles )
 {
 	Vector vOriginalOrigin = origin;
@@ -471,7 +476,8 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 
 	// Calculate our drift
 	Vector	forward;
-	AngleVectors( angles, &forward, NULL, NULL );
+	Vector	right_mirrored;
+	AngleVectors( angles, &forward, &right_mirrored, NULL );
 
 	if ( gpGlobals->frametime != 0.0f )
 	{
@@ -492,8 +498,18 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		// FIXME:  Needs to be predictable?
 		VectorMA( m_vecLastFacing, flSpeed * gpGlobals->frametime, vDifference, m_vecLastFacing );
 		// Make sure it doesn't grow out of control!!!
+
+		//thanks half life 2 mirrored for fixing this for me (:
+#ifdef CLIENT_DLL
 		VectorNormalize( m_vecLastFacing );
-		VectorMA( origin, 5.0f, vDifference * -1.0f, origin );
+		if (amod_mirrored.GetBool())
+		{
+			Vector vDifferenceRef = vDifference - 2.0f * (DotProduct(vDifference, right_mirrored)) * right_mirrored;
+			VectorMA(origin, 5.0f, vDifferenceRef * -1.0f, origin);
+		}
+		else
+#endif
+			VectorMA( origin, 5.0f, vDifference * -1.0f, origin );
 
 		Assert( m_vecLastFacing.IsValid() );
 	}

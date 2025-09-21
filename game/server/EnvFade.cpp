@@ -72,6 +72,16 @@ void CEnvFade::Spawn( void )
 //-----------------------------------------------------------------------------
 void CEnvFade::InputFade( inputdata_t &inputdata )
 {
+	if (!Q_strcmp(STRING(gpGlobals->mapname), "ep2_outland_12a_d") && !Q_strcmp(STRING(GetEntityName()), "f_portal"))
+	{
+		ConCommand* cc = cvar->FindCommand("amod_outrotest");
+		if (cc)
+		{
+			CCommand args;
+			cc->Dispatch(args);
+		}
+	}
+
 	int fadeFlags = 0;
 
 	if ( m_spawnflags & SF_FADE_IN )

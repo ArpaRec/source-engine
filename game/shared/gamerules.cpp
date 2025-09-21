@@ -859,7 +859,13 @@ void CGameRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 	if ( pszFov )
 	{
 		int iFov = atoi(pszFov);
-		iFov = clamp( iFov, 75, 110 );
+
+		static ConVar* var = cvar->FindVar("amod_view_claustrophobia");
+		if (var && var->GetBool())
+			iFov = clamp( iFov, 75, 170 );
+		else
+			iFov = clamp(iFov, 75, 110);
+
 		pPlayer->SetDefaultFOV( iFov );
 	}
 

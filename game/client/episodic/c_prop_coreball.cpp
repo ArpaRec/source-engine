@@ -38,7 +38,7 @@ private:
 
 };
 
-void RecvProxy_ScaleX( const CRecvProxyData *pData, void *pStruct, void *pOut )
+static void RecvProxy_ScaleX( const CRecvProxyData *pData, void *pStruct, void *pOut )
 {
 	C_PropCoreBall *pCoreData = (C_PropCoreBall *) pStruct;
 
@@ -50,7 +50,7 @@ void RecvProxy_ScaleX( const CRecvProxyData *pData, void *pStruct, void *pOut )
 	}
 }
 
-void RecvProxy_ScaleY( const CRecvProxyData *pData, void *pStruct, void *pOut )
+static void RecvProxy_ScaleY( const CRecvProxyData *pData, void *pStruct, void *pOut )
 {
 	C_PropCoreBall *pCoreData = (C_PropCoreBall *) pStruct;
 
@@ -62,7 +62,7 @@ void RecvProxy_ScaleY( const CRecvProxyData *pData, void *pStruct, void *pOut )
 	}
 }
 
-void RecvProxy_ScaleZ( const CRecvProxyData *pData, void *pStruct, void *pOut )
+static void RecvProxy_ScaleZ( const CRecvProxyData *pData, void *pStruct, void *pOut )
 {
 	C_PropCoreBall *pCoreData = (C_PropCoreBall *) pStruct;
 

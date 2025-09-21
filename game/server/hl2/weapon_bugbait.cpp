@@ -270,9 +270,18 @@ void CWeaponBugBait::ThrowGrenade( CBasePlayer *pPlayer )
 	pPlayer->EyeVectors( &vForward, &vRight, &vUp );
 
 	vThrowPos = pPlayer->EyePosition();
-
 	vThrowPos += vForward * 18.0f;
-	vThrowPos += vRight * 12.0f;
+
+	static ConVar* amod_mirrored = cvar->FindVar("amod_mirrored");
+	if (!amod_mirrored)
+		vThrowPos += vRight * 12.0f;
+	else
+	{
+		if (amod_mirrored->GetBool())
+			vThrowPos -= vRight * 12.0f;
+		else
+			vThrowPos += vRight * 12.0f;
+	}
 
 	pPlayer->GetVelocity( &vThrowVel, NULL );
 	vThrowVel += vForward * 1000;

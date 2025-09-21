@@ -191,6 +191,7 @@ bool C_BaseViewModel::Interpolate( float currentTime )
 	return bret;
 }
 
+extern ConVar amod_mirrored;
 
 inline bool C_BaseViewModel::ShouldFlipViewModel()
 {
@@ -212,7 +213,7 @@ inline bool C_BaseViewModel::ShouldFlipViewModel()
 	}
 #endif
 
-	return false;
+	return amod_mirrored.GetBool();
 }
 
 

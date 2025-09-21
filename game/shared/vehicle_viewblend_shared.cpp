@@ -325,11 +325,13 @@ void SharedVehicleViewSmoothing(CBasePlayer *pPlayer,
 	MatrixGetColumn( newCameraToWorld, 3, *pAbsOrigin );
 
 	float flDefaultFOV;
-#ifdef CLIENT_DLL
-	flDefaultFOV = default_fov.GetFloat();
-#else
-	flDefaultFOV = pPlayer->GetDefaultFOV();
-#endif
+
+//amod
+	static ConVar* fov_desired = cvar->FindVar("fov_desired");
+	if (fov_desired)
+		flDefaultFOV = fov_desired->GetFloat();
+	else
+		flDefaultFOV = 90;
 
 	// If we're playing an entry or exit animation...
 	if ( bRunningAnim || pData->bRunningEnterExit )
@@ -407,10 +409,10 @@ void SharedVehicleViewSmoothing(CBasePlayer *pPlayer,
 	}
 	else if ( pFOV != NULL )
 	{
-		if ( pData->flFOV > flDefaultFOV )
-		{
-			// Not running an entry/exit anim. Just use the vehicle's FOV.
-			*pFOV = pData->flFOV;
-		}
+		//if ( pData->flFOV > flDefaultFOV )
+		//{
+		//	// Not running an entry/exit anim. Just use the vehicle's FOV.
+		//	*pFOV = pData->flFOV;
+		//}
 	}
 }

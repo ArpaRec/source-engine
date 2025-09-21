@@ -317,6 +317,9 @@ public:
 
 	void			AddViewToScene( CRendering3dView *pView ) { m_SimpleExecutor.AddView( pView ); }
 protected:
+	bool m_HasPrevViewSetup;
+	CViewSetup m_PrevViewSetup;
+
 	// Sets up the view parameters for all views (left, middle and right eyes).
     void            SetUpViews();
 
@@ -487,6 +490,21 @@ private:
 	CMaterialReference	m_ModulateSingleColor;
 	CMaterialReference	m_ScreenOverlayMaterial;
 	CMaterialReference m_UnderWaterOverlayMaterial;
+	CMaterialReference m_ScreenFlipMaterial;
+	CMaterialReference m_lenseDirtMaterial;
+	CMaterialReference m_filterBinoculars;
+	CMaterialReference m_filterBodyCam;
+	CMaterialReference m_screenBlackMaterial;
+	CMaterialReference m_filterBlur;
+	CMaterialReference m_filterVideo1;
+	CMaterialReference m_filterVideo2;
+	CMaterialReference m_filterVideo3;
+	CMaterialReference m_filterVideo4;
+	CMaterialReference m_filterVideo5;
+	CMaterialReference m_filterVideo6;
+	CMaterialReference m_filterVideo7;
+	CMaterialReference m_filterVideo8;
+	CMaterialReference m_filterVignette;
 
 	Vector			m_vecLastFacing;
 	float			m_flCheapWaterStartDistance;

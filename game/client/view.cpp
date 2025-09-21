@@ -118,13 +118,7 @@ ConVar mat_viewportscale( "mat_viewportscale", "1.0", FCVAR_ARCHIVE, "Scale down
 ConVar mat_viewportupscale( "mat_viewportupscale", "1", FCVAR_ARCHIVE, "Scale the viewport back up" );
 ConVar cl_leveloverview( "cl_leveloverview", "0", FCVAR_CHEAT );
 
-#ifdef ANDROID
-#define MAPEXTENTS_DEFAULT "12288" // small optimization
-#else
-#define MAPEXTENTS_DEFAULT "16384"
-#endif
-
-static ConVar r_mapextents( "r_mapextents", MAPEXTENTS_DEFAULT, FCVAR_CHEAT,
+static ConVar r_mapextents( "r_mapextents", "16384", FCVAR_CHEAT, 
 						   "Set the max dimension for the map.  This determines the far clipping plane" );
 
 // UNDONE: Delete this or move to the material system?
@@ -326,6 +320,51 @@ void CViewRender::Init( void )
 	m_flLastFOV = default_fov.GetFloat();
 #endif
 
+	//waddelz - added this
+	m_ScreenFlipMaterial.Init(materials->FindMaterial("engine/mirror_screen", TEXTURE_GROUP_VGUI));
+	m_ScreenFlipMaterial->IncrementReferenceCount();
+
+	m_lenseDirtMaterial.Init(materials->FindMaterial("effects/view/lense_dirt", TEXTURE_GROUP_VGUI));
+	m_lenseDirtMaterial->IncrementReferenceCount();
+
+	m_filterBinoculars.Init(materials->FindMaterial("effects/combine_binocoverlay.", TEXTURE_GROUP_VGUI));
+	m_filterBinoculars->IncrementReferenceCount();
+
+	m_filterBodyCam.Init(materials->FindMaterial("effects/view/bodycam", TEXTURE_GROUP_VGUI));
+	m_filterBodyCam->IncrementReferenceCount();
+
+	m_filterBlur.Init(materials->FindMaterial("effects/view/blur", TEXTURE_GROUP_VGUI));
+	m_filterBlur->IncrementReferenceCount();
+
+	m_screenBlackMaterial.Init(materials->FindMaterial("effects/view/black", TEXTURE_GROUP_VGUI));
+	m_screenBlackMaterial->IncrementReferenceCount();
+
+	m_filterVideo1.Init(materials->FindMaterial("effects/view/filter_for_video1", TEXTURE_GROUP_VGUI));
+	m_filterVideo1->IncrementReferenceCount();
+
+	m_filterVideo2.Init(materials->FindMaterial("effects/view/filter_for_video2", TEXTURE_GROUP_VGUI));
+	m_filterVideo2->IncrementReferenceCount();
+
+	m_filterVideo3.Init(materials->FindMaterial("effects/view/filter_for_video3", TEXTURE_GROUP_VGUI));
+	m_filterVideo3->IncrementReferenceCount();
+
+	m_filterVideo4.Init(materials->FindMaterial("effects/view/filter_for_video4", TEXTURE_GROUP_VGUI));
+	m_filterVideo4->IncrementReferenceCount();
+
+	m_filterVideo5.Init(materials->FindMaterial("effects/view/filter_for_video5", TEXTURE_GROUP_VGUI));
+	m_filterVideo5->IncrementReferenceCount();
+
+	m_filterVideo6.Init(materials->FindMaterial("effects/view/filter_for_video6", TEXTURE_GROUP_VGUI));
+	m_filterVideo6->IncrementReferenceCount();
+
+	m_filterVideo7.Init(materials->FindMaterial("effects/view/filter_for_video7", TEXTURE_GROUP_VGUI));
+	m_filterVideo7->IncrementReferenceCount();
+
+	m_filterVideo8.Init(materials->FindMaterial("effects/view/filter_for_video8", TEXTURE_GROUP_VGUI));
+	m_filterVideo8->IncrementReferenceCount();
+	
+	m_filterVignette.Init(materials->FindMaterial("effects/view/vignette", TEXTURE_GROUP_VGUI));
+	m_filterVignette->IncrementReferenceCount();
 }
 
 //-----------------------------------------------------------------------------
@@ -648,17 +687,16 @@ void CViewRender::SetUpViews()
 	// Initialize view structure with default values
 	float farZ = GetZFar();
 
-	// Set up the mono/middle view.
-	CViewSetup &view = m_View;
+    // Set up the mono/middle view.
+    CViewSetup &view = m_View;
 
-	view.zFar			= farZ;
-	view.zFarViewmodel		= farZ;
-
-	// UNDONE: Make this farther out?
+	view.zFar				= farZ;
+	view.zFarViewmodel	    = farZ;
+	// UNDONE: Make this farther out? 
 	//  closest point of approach seems to be view center to top of crouched box
-	view.zNear		= GetZNear();
-	view.zNearViewmodel	= 1;
-	view.fov		= default_fov.GetFloat();
+	view.zNear			    = GetZNear();
+	view.zNearViewmodel	    = 1;
+	view.fov				= default_fov.GetFloat();
 
 	view.m_bOrtho			= false;
     view.m_bViewToProjectionOverride = false;
@@ -743,7 +781,8 @@ void CViewRender::SetUpViews()
 	float flFOVOffset = fDefaultFov - view.fov;
 
 	//Adjust the viewmodel's FOV to move with any FOV offsets on the viewer's end
-	view.fovViewmodel = fabs( g_pClientMode->GetViewModelFOV() - flFOVOffset );
+	view.fovViewmodel = g_pClientMode->GetViewModelFOV() - flFOVOffset;
+	view.fovViewmodel = max(0, view.fovViewmodel);
 
 	if ( UseVR() )
 	{
@@ -938,7 +977,7 @@ void CViewRender::WriteSaveGameScreenshotOfSize( const char *pFilename, int widt
 	{
 		// Write TGA format to buffer
 		int iMaxTGASize = 1024 + ( nSrcWidth * nSrcHeight * 4 );
-		void *pTGA = new char[ iMaxTGASize ];
+		void *pTGA = malloc( iMaxTGASize );
 		buffer.SetExternalBuffer( pTGA, iMaxTGASize, 0 );
 
 		bWriteResult = TGAWriter::WriteToBuffer( pSrcImage, buffer, nSrcWidth, nSrcHeight, IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGB888 );

@@ -90,6 +90,8 @@
 #include "serverbenchmark_base.h"
 #include "querycache.h"
 
+//alone mod 
+#include "cdll_int.h"
 
 #ifdef TF_DLL
 #include "gc_clientsystem.h"
@@ -97,8 +99,8 @@
 #include "steamworks_gamestats.h"
 #include "tf/tf_gc_server.h"
 #include "tf_gamerules.h"
+#include "tf_lobby.h"
 #include "player_vs_environment/tf_population_manager.h"
-#include "workshop/maps_workshop.h"
 
 extern ConVar tf_mm_trusted;
 extern ConVar tf_mm_servermode;
@@ -159,6 +161,11 @@ ISaveRestoreBlockHandler *GetCommentarySaveRestoreBlockHandler();
 CUtlLinkedList<CMapEntityRef, unsigned short> g_MapEntityRefs;
 
 // Engine interfaces.
+
+//waddelz - im sorry im doing this i just need it for game_text and other things in the future for the server if 
+//i need to
+IVEngineClient* clientengine = NULL;
+
 IVEngineServer	*engine = NULL;
 IVoiceServer	*g_pVoiceServer = NULL;
 #if !defined(_STATIC_LINKED)
@@ -559,11 +566,11 @@ void DrawAllDebugOverlays( void )
 
 CServerGameDLL g_ServerGameDLL;
 // INTERFACEVERSION_SERVERGAMEDLL_VERSION_8 is compatible with the latest since we're only adding things to the end, so expose that as well.
-//EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameDLL, IServerGameDLL008, INTERFACEVERSION_SERVERGAMEDLL_VERSION_8, g_ServerGameDLL );
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameDLL, IServerGameDLL008, INTERFACEVERSION_SERVERGAMEDLL_VERSION_8, g_ServerGameDLL );
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameDLL, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL, g_ServerGameDLL);
 
 // When bumping the version to this interface, check that our assumption is still valid and expose the older version in the same way
-COMPILE_TIME_ASSERT( INTERFACEVERSION_SERVERGAMEDLL_INT == 10 );
+COMPILE_TIME_ASSERT( INTERFACEVERSION_SERVERGAMEDLL_INT == 9 );
 
 bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory, 
 		CreateInterfaceFn physicsFactory, CreateInterfaceFn fileSystemFactory, 
@@ -583,6 +590,8 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 #endif
 
 	// init each (seperated for ease of debugging)
+	if ( (clientengine = (IVEngineClient*)appSystemFactory(VENGINE_CLIENT_INTERFACE_VERSION, NULL)) == NULL )
+		ConWarning("Failed To Load IVEngineClient For gameinterface.cpp\n");
 	if ( (engine = (IVEngineServer*)appSystemFactory(INTERFACEVERSION_VENGINESERVER, NULL)) == NULL )
 		return false;
 	if ( (g_pVoiceServer = (IVoiceServer*)appSystemFactory(INTERFACEVERSION_VOICESERVER, NULL)) == NULL )
@@ -595,7 +604,7 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 	if ( (enginesound = (IEngineSound *)appSystemFactory(IENGINESOUND_SERVER_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
-	if ( (::partition = (ISpatialPartition *)appSystemFactory(INTERFACEVERSION_SPATIALPARTITION, NULL)) == NULL )
+	if ( (partition = (ISpatialPartition *)appSystemFactory(INTERFACEVERSION_SPATIALPARTITION, NULL)) == NULL )
 		return false;
 	if ( (modelinfo = (IVModelInfo *)appSystemFactory(VMODELINFO_SERVER_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
@@ -827,6 +836,15 @@ float CServerGameDLL::GetTickInterval( void ) const
 {
 	float tickinterval = DEFAULT_TICK_INTERVAL;
 
+//=============================================================================
+// HPE_BEGIN:
+// [Forrest] For Counter-Strike, set default tick rate of 66 and removed -tickrate command line parameter.
+//=============================================================================
+// Ignoring this for now, server ops are abusing it
+#if !defined( TF_DLL ) && !defined( CSTRIKE_DLL ) && !defined( DOD_DLL )
+//=============================================================================
+// HPE_END
+//=============================================================================
 	// override if tick rate specified in command line
 	if ( CommandLine()->CheckParm( "-tickrate" ) )
 	{
@@ -834,6 +852,7 @@ float CServerGameDLL::GetTickInterval( void ) const
 		if ( tickrate > 10 )
 			tickinterval = 1.0f / tickrate;
 	}
+#endif
 
 	return tickinterval;
 }
@@ -1071,7 +1090,9 @@ bool g_bCheckForChainedActivate;
 	{ \
 		if ( bCheck ) \
 		{ \
-			AssertMsg( g_bReceivedChainedActivate, "Entity (%i/%s/%s) failed to call base class Activate()\n", pClass->entindex(), pClass->GetClassname(), STRING( pClass->GetEntityName() ) );	\
+			char msg[ 1024 ];	\
+			Q_snprintf( msg, sizeof( msg ),  "Entity (%i/%s/%s) failed to call base class Activate()\n", pClass->entindex(), pClass->GetClassname(), STRING( pClass->GetEntityName() ) );	\
+			AssertMsg( g_bReceivedChainedActivate == true, msg ); \
 		} \
 		g_bCheckForChainedActivate = false; \
 	}
@@ -1088,7 +1109,7 @@ void CServerGameDLL::ServerActivate( edict_t *pEdictList, int edictCount, int cl
 
 	if ( gEntList.ResetDeleteList() != 0 )
 	{
-		Msg( "%s", "ERROR: Entity delete queue not empty on level start!\n" );
+		Msg( "ERROR: Entity delete queue not empty on level start!\n" );
 	}
 
 	for ( CBaseEntity *pClass = gEntList.FirstEnt(); pClass != NULL; pClass = gEntList.NextEnt(pClass) )
@@ -1138,7 +1159,6 @@ void CServerGameDLL::ServerActivate( edict_t *pEdictList, int edictCount, int cl
 void CServerGameDLL::GameServerSteamAPIActivated( void )
 {
 #ifndef NO_STEAM
-	steamgameserverapicontext->Clear();
 	steamgameserverapicontext->Init();
 	if ( steamgameserverapicontext->SteamGameServer() && engine->IsDedicatedServer() )
 	{
@@ -1149,7 +1169,6 @@ void CServerGameDLL::GameServerSteamAPIActivated( void )
 #ifdef TF_DLL
 	GCClientSystem()->GameServerActivate();
 	InventoryManager()->GameServerSteamAPIActivated();
-	TFMapsWorkshop()->GameServerSteamAPIActivated();
 #endif
 }
 
@@ -1897,81 +1916,24 @@ const char *CServerGameDLL::GetServerBrowserGameData()
 #ifdef TF_DLL
 	sResult.Format( "tf_mm_trusted:%d,tf_mm_servermode:%d", tf_mm_trusted.GetInt(), tf_mm_servermode.GetInt() );
 
-	CMatchInfo *pMatch = GTFGCClientSystem()->GetMatch();
-	if ( !pMatch )
+	CTFLobby *pLobby = GTFGCClientSystem()->GetLobby();
+	if ( pLobby == NULL )
 	{
 		sResult.Append( ",lobby:0" );
 	}
 	else
 	{
-		sResult.Append( CFmtStr( ",lobby:%016llx", pMatch->m_nLobbyID ) );
+		sResult.Append( CFmtStr( ",lobby:%016llx", pLobby->GetGroupID() ) );
 	}
 	if ( TFGameRules() && TFGameRules()->IsMannVsMachineMode() )
 	{
-		bool bMannup = pMatch && pMatch->m_eMatchGroup == k_nMatchGroup_MvM_MannUp;
-		sResult.Append( CFmtStr( ",mannup:%d", (int)bMannup ) );
+		sResult.Append( CFmtStr( ",mannup:%d", ( pLobby && pLobby->GetPlayingForBraggingRights() ) ? 1 : 0  ) );
 	}
 #endif
 
 	static char rchResult[2048];
 	V_strcpy_safe( rchResult, sResult );
 	return rchResult;
-}
-
-//-----------------------------------------------------------------------------
-void CServerGameDLL::Status( void (*print) (const char *fmt, ...) )
-{
-/*	if ( g_pGameRules )
-	{
-		g_pGameRules->Status( print );
-	}*/
-}
-
-//-----------------------------------------------------------------------------
-void CServerGameDLL::PrepareLevelResources( /* in/out */ char *pszMapName, size_t nMapNameSize,
-                                            /* in/out */ char *pszMapFile, size_t nMapFileSize )
-{
-#ifdef TF_DLL
-	TFMapsWorkshop()->PrepareLevelResources( pszMapName, nMapNameSize, pszMapFile, nMapFileSize );
-#endif // TF_DLL
-}
-
-//-----------------------------------------------------------------------------
-IServerGameDLL::ePrepareLevelResourcesResult
-CServerGameDLL::AsyncPrepareLevelResources( /* in/out */ char *pszMapName, size_t nMapNameSize,
-                                            /* in/out */ char *pszMapFile, size_t nMapFileSize,
-                                            float *flProgress /* = NULL */ )
-{
-#ifdef TF_DLL
-	return TFMapsWorkshop()->AsyncPrepareLevelResources( pszMapName, nMapNameSize, pszMapFile, nMapFileSize, flProgress );
-#endif // TF_DLL
-
-	if ( flProgress )
-	{
-		*flProgress = 1.f;
-	}
-	return IServerGameDLL::ePrepareLevelResources_Prepared;
-}
-
-//-----------------------------------------------------------------------------
-IServerGameDLL::eCanProvideLevelResult CServerGameDLL::CanProvideLevel( /* in/out */ char *pMapName, int nMapNameMax )
-{
-#ifdef TF_DLL
-	return TFMapsWorkshop()->OnCanProvideLevel( pMapName, nMapNameMax );
-#endif // TF_DLL
-	return IServerGameDLL::eCanProvideLevel_CannotProvide;
-}
-
-//-----------------------------------------------------------------------------
-bool CServerGameDLL::IsManualMapChangeOkay( const char **pszReason )
-{
-/*
-	if ( GameRules() )
-	{
-		return GameRules()->IsManualMapChangeOkay( pszReason );
-	}
-*/
-	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -2686,7 +2648,7 @@ void CServerGameClients::ClientActive( edict_t *pEdict, bool bLoadGame )
 
 	#if defined( TF_DLL )
 		Assert( pPlayer );
-		if ( pPlayer && !pPlayer->IsFakeClient() && !pPlayer->IsHLTV() && !pPlayer->IsReplay() )
+		if ( pPlayer && !pPlayer->IsFakeClient() )
 		{
 			CSteamID steamID;
 			if ( pPlayer->GetSteamID( &steamID ) )
@@ -2695,10 +2657,7 @@ void CServerGameClients::ClientActive( edict_t *pEdict, bool bLoadGame )
 			}
 			else
 			{
-				if ( !pPlayer->IsReplay() && !pPlayer->IsHLTV() )
-				{
-					Log("WARNING: ClientActive, but we don't know his SteamID?\n");
-				}
+				Log("WARNING: ClientActive, but we don't know his SteamID?\n");
 			}
 		}
 	#endif
@@ -2772,10 +2731,7 @@ void CServerGameClients::ClientDisconnect( edict_t *pEdict )
 				}
 				else
 				{
-					if ( !player->IsReplay() && !player->IsHLTV() )
-					{
-						Log("WARNING: ClientDisconnected, but we don't know his SteamID?\n");
-					}
+					Log("WARNING: ClientDisconnected, but we don't know his SteamID?\n");
 				}
 			}
 		#endif
@@ -3385,7 +3341,7 @@ void MessageWriteEHandle( CBaseEntity *pEntity )
 	{
 		EHANDLE hEnt = pEntity;
 
-		int iSerialNum = hEnt.GetSerialNumber() & ( (1 << NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS) - 1 );
+		int iSerialNum = hEnt.GetSerialNumber() & (1 << NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS) - 1;
 		iEncodedEHandle = hEnt.GetEntryIndex() | (iSerialNum << MAX_EDICT_BITS);
 	}
 	else

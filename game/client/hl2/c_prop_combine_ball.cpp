@@ -17,6 +17,10 @@
 #include "view_scene.h"
 #include "beamdraw.h"
 
+//waddelz
+#include "dlight.h"
+#include "iefx.h"
+
 // Precache our effects
 CLIENTEFFECT_REGISTER_BEGIN( PrecacheEffectCombineBall )
 CLIENTEFFECT_MATERIAL( "effects/ar2_altfire1" )
@@ -49,9 +53,24 @@ C_PropCombineBall::C_PropCombineBall( void )
 // Purpose: 
 // Input  : updateType - 
 //-----------------------------------------------------------------------------
+ConVar amod_cball_light("amod_cball_light", "1");
+
 void C_PropCombineBall::OnDataChanged( DataUpdateType_t updateType )
 {
 	BaseClass::OnDataChanged( updateType );
+
+	if (amod_cball_light.GetBool())
+	{
+		dlight_t* el = effects->CL_AllocDlight(LIGHT_INDEX_TE_DYNAMIC + index);
+		el->origin = GetAbsOrigin();
+		el->radius = random->RandomInt(70, 110);
+		el->decay = el->radius / 0.4f;
+		el->die = gpGlobals->curtime + 0.1f;
+		el->color.r = 245;
+		el->color.g = 243;
+		el->color.b = 240;
+		el->color.exponent = 2;
+	}
 
 	if ( updateType == DATA_UPDATE_CREATED )
 	{

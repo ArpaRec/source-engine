@@ -36,6 +36,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+//mirrored
+extern ConVar amod_mirrored;
+
 // up / down
 #define	PITCH	0
 // left / right
@@ -423,7 +426,8 @@ void CInput::ScaleMouse( float *x, float *y )
 		//  to 0.022
 		if ( m_customaccel.GetInt() == 2 || m_customaccel.GetInt() == 4 )
 		{ 
-			*x *= m_yaw.GetFloat(); 
+			//waddelz - for mirrored effect
+			*x *= ((amod_mirrored.GetBool()) ? m_yaw.GetFloat() * -1 : m_yaw.GetFloat()); 
 			*y *= m_pitch->GetFloat(); 
 		} 
 	}
@@ -452,6 +456,7 @@ void CInput::ScaleMouse( float *x, float *y )
 //-----------------------------------------------------------------------------
 void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float mouse_y )
 {
+	bool mirrored = amod_mirrored.GetBool();
 	if ( !((in_strafe.state & 1) || lookstrafe.GetInt()) )
 	{
 #ifdef PORTAL
@@ -469,7 +474,8 @@ void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float
 					Vector vTempOffset = g_ThirdPersonManager.GetCameraOffsetAngles();
 
 					// use the mouse to orbit the camera around the player, and update the idealAngle
-					vTempOffset[ YAW ] -= m_yaw.GetFloat() * mouse_x;
+						vTempOffset[YAW] -= ((mirrored) ? m_yaw.GetFloat() * -1: m_yaw.GetFloat()) * mouse_x;
+
 					cam_idealyaw.SetValue( vTempOffset[ YAW ] - viewangles[ YAW ] );
 
 					g_ThirdPersonManager.SetCameraOffsetAngles( vTempOffset );
@@ -481,7 +487,7 @@ void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float
 			else
 			{
 				// Otherwize, use mouse to spin around vertical axis
-				viewangles[YAW] -= CAM_CapYaw( m_yaw.GetFloat() * mouse_x );
+				viewangles[YAW] -= CAM_CapYaw(((mirrored) ? m_yaw.GetFloat() * -1 : m_yaw.GetFloat()) * mouse_x );
 			}
 		}
 	}

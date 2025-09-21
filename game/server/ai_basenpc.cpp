@@ -4,6 +4,8 @@
 //
 //=============================================================================//
 
+//waddelz - removed A.I. DISABLED
+
 #include "cbase.h"
 
 #include "ai_basenpc.h"
@@ -2909,29 +2911,6 @@ bool CAI_BaseNPC::PreThink( void )
 	// ----------------------------------------------------------
 	if ( (CAI_BaseNPC::m_nDebugBits & bits_debugDisableAI || !g_pAINetworkManager->NetworksLoaded()) )
 	{
-		if ( gpGlobals->curtime >= g_AINextDisabledMessageTime && !IsInCommentaryMode() )
-		{
-			g_AINextDisabledMessageTime = gpGlobals->curtime + 0.5f;
-
-			hudtextparms_s tTextParam;
-			tTextParam.x			= 0.7;
-			tTextParam.y			= 0.65;
-			tTextParam.effect		= 0;
-			tTextParam.r1			= 255;
-			tTextParam.g1			= 255;
-			tTextParam.b1			= 255;
-			tTextParam.a1			= 255;
-			tTextParam.r2			= 255;
-			tTextParam.g2			= 255;
-			tTextParam.b2			= 255;
-			tTextParam.a2			= 255;
-			tTextParam.fadeinTime	= 0;
-			tTextParam.fadeoutTime	= 0;
-			tTextParam.holdTime		= 0.6;
-			tTextParam.fxTime		= 0;
-			tTextParam.channel		= 1;
-			UTIL_HudMessageAll( tTextParam, "A.I. Disabled...\n" );
-		}
 		SetActivity( ACT_IDLE );
 		return false;
 	}
@@ -11331,7 +11310,6 @@ CAI_BaseNPC::CAI_BaseNPC(void)
 	m_flHeadYaw					= 0;
 	m_flHeadPitch				= 0;
 	m_spawnEquipment			= NULL_STRING;
-	m_SquadName = NULL_STRING;
 	m_pEnemies					= new CAI_Enemies;
 	m_bIgnoreUnseenEnemies		= false;
 	m_flEyeIntegRate			= 0.95;

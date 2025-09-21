@@ -54,6 +54,9 @@
 #include "sourcevr/isourcevirtualreality.h"
 #include "client_virtualreality.h"
 
+//alone mod stuff
+#include "AloneMod/AmodCvars.h"
+
 #ifdef PORTAL
 //#include "C_Portal_Player.h"
 #include "portal_render_targets.h"
@@ -79,7 +82,6 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
-
 
 static void testfreezeframe_f( void )
 {
@@ -259,8 +261,10 @@ private:
 class CWorldListCache
 {
 public:
-	CWorldListCache() = default;
+	CWorldListCache()
+	{
 
+	}
 	void Flush()
 	{
 		for ( int i = m_Entries.FirstInorder(); i != m_Entries.InvalidIndex(); i = m_Entries.NextInorder( i ) )
@@ -933,6 +937,8 @@ CViewRender::CViewRender()
 	m_BaseDrawFlags = 0;
 	m_pActiveRenderer = NULL;
 	m_pCurrentlyDrawingEntity = NULL;
+
+	m_HasPrevViewSetup = false;
 }
 
 
@@ -1433,8 +1439,8 @@ static void GetFogColorTransition( fogparams_t *pFogParams, float *pColorPrimary
 	{
 		float flPercent = 1.0f - (( pFogParams->lerptime - gpGlobals->curtime ) / pFogParams->duration );
 
-		float flPrimaryColorLerp[3] = { (float)pFogParams->colorPrimaryLerpTo.GetR(), (float)pFogParams->colorPrimaryLerpTo.GetG(), (float)pFogParams->colorPrimaryLerpTo.GetB() };
-		float flSecondaryColorLerp[3] = { (float)pFogParams->colorSecondaryLerpTo.GetR(), (float)pFogParams->colorSecondaryLerpTo.GetG(), (float)pFogParams->colorSecondaryLerpTo.GetB() };
+		float flPrimaryColorLerp[3] = { pFogParams->colorPrimaryLerpTo.GetR(), pFogParams->colorPrimaryLerpTo.GetG(), pFogParams->colorPrimaryLerpTo.GetB() };
+		float flSecondaryColorLerp[3] = { pFogParams->colorSecondaryLerpTo.GetR(), pFogParams->colorSecondaryLerpTo.GetG(), pFogParams->colorSecondaryLerpTo.GetB() };
 
 		CheckAndTransitionColor( flPercent, pColorPrimary, flPrimaryColorLerp );
 		CheckAndTransitionColor( flPercent, pColorSecondary, flSecondaryColorLerp );
@@ -1457,8 +1463,8 @@ static void GetFogColor( fogparams_t *pFogParams, float *pColor )
 	}
 	else
 	{
-		float flPrimaryColor[3] = { (float)pFogParams->colorPrimary.GetR(), (float)pFogParams->colorPrimary.GetG(), (float)pFogParams->colorPrimary.GetB() };
-		float flSecondaryColor[3] = { (float)pFogParams->colorSecondary.GetR(), (float)pFogParams->colorSecondary.GetG(), (float)pFogParams->colorSecondary.GetB() };
+		float flPrimaryColor[3] = { pFogParams->colorPrimary.GetR(), pFogParams->colorPrimary.GetG(), pFogParams->colorPrimary.GetB() };
+		float flSecondaryColor[3] = { pFogParams->colorSecondary.GetR(), pFogParams->colorSecondary.GetG(), pFogParams->colorSecondary.GetB() };
 
 		GetFogColorTransition( pFogParams, flPrimaryColor, flSecondaryColor );
 
@@ -1585,6 +1591,9 @@ static bool GetFogEnable( fogparams_t *pFogParams )
 
 	// Ask the clientmode
 	if ( g_pClientMode->ShouldDrawFog() == false )
+		return false;
+
+	if (amod_fog_disabled.GetBool())
 		return false;
 
 	if( fog_override.GetInt() )
@@ -1900,6 +1909,214 @@ void CViewRender::FreezeFrame( float flFreezeTime )
 
 const char *COM_GetModDirectory();
 
+//mirrored
+void DrawQuad(IMaterial* pMat, int width, int height)
+{
+	float halfPixelWidth = -0.5f / width;
+	float halfPixelHeight = -0.5f / height;
+
+	CMatRenderContextPtr pRenderContext(materials);
+
+	pRenderContext->Bind(pMat);
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	CMeshBuilder meshBuilder;
+	IMesh* pMesh = pRenderContext->GetDynamicMesh(false);
+	meshBuilder.Begin(pMesh, MATERIAL_QUADS, 1);
+
+	meshBuilder.Position3f(-1.1f, 1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.05f + halfPixelWidth, -0.05f + halfPixelHeight);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(1.1f, 1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, -0.05f + halfPixelWidth, -0.05f + halfPixelHeight);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(1.1f, -1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, -0.05f + halfPixelWidth, 1.05f + halfPixelHeight);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(-1.1f, -1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.05f + halfPixelWidth, 1.05f + halfPixelHeight);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.End();
+
+	pMesh->Draw();
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PopMatrix();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PopMatrix();
+}
+
+void DrawBar(IMaterial* pMat, int width, int height, float left, float right)
+{
+	CMatRenderContextPtr pRenderContext(materials);
+	pRenderContext->Bind(pMat);
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	CMeshBuilder meshBuilder;
+	IMesh* pMesh = pRenderContext->GetDynamicMesh(false);
+	meshBuilder.Begin(pMesh, MATERIAL_QUADS, 1);
+
+	meshBuilder.Position3f(left, 1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 0.0f, 0.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(right, 1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.0f, 0.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(right, -1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.0f, 1.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(left, -1.1f, 0.5f);
+	meshBuilder.TexCoord2f(0, 0.0f, 1.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.End();
+	pMesh->Draw();
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PopMatrix();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PopMatrix();
+}
+
+void DrawTopBar(IMaterial* pMat, int width, int height, float bottom, float top)
+{
+	CMatRenderContextPtr pRenderContext(materials);
+	pRenderContext->Bind(pMat);
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	CMeshBuilder meshBuilder;
+	IMesh* pMesh = pRenderContext->GetDynamicMesh(false);
+	meshBuilder.Begin(pMesh, MATERIAL_QUADS, 1);
+
+	meshBuilder.Position3f(-1.1f, top, 0.5f);
+	meshBuilder.TexCoord2f(0, 0.0f, 0.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(1.1f, top, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.0f, 0.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(1.1f, bottom, 0.5f);
+	meshBuilder.TexCoord2f(0, 1.0f, 1.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Position3f(-1.1f, bottom, 0.5f);
+	meshBuilder.TexCoord2f(0, 0.0f, 1.0f);
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.End();
+	pMesh->Draw();
+
+	pRenderContext->MatrixMode(MATERIAL_PROJECTION);
+	pRenderContext->PopMatrix();
+
+	pRenderContext->MatrixMode(MATERIAL_VIEW);
+	pRenderContext->PopMatrix();
+}
+
+
+void Amod_PerformScreenOverlay(CMaterialReference& ref, int x, int y, int w, int h)
+{
+	VPROF("CViewRender::PerformScreenOverlay()");
+
+	if (ref)
+	{
+		tmZone(TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__);
+
+		if (ref->NeedsFullFrameBufferTexture())
+		{
+			DrawScreenEffectMaterial(ref, x, y, w, h);
+		}
+		else if (ref->NeedsPowerOfTwoFrameBufferTexture())
+		{
+			UpdateRefractTexture(x, y, w, h, true);
+
+			CMatRenderContextPtr pRenderContext(materials);
+			ITexture* pTexture = GetPowerOfTwoFrameBufferTexture();
+			int sw = pTexture->GetActualWidth();
+			int sh = pTexture->GetActualHeight();
+
+			pRenderContext->DrawScreenSpaceRectangle(ref, 0, 0, w, h,
+				0, 0, sw - 1, sh - 1, sw, sh);
+		}
+		else
+		{
+			byte color[4] = { 255, 255, 255, 255 };
+			render->ViewDrawFade(color, ref);
+		}
+	}
+}
+
+Vector AngleToForwardVector(const QAngle& angle) 
+{
+	float pitchRad = angle.x * (3.14159265f / 180.0f); 
+	float yawRad = angle.y * (3.14159265f / 180.0f);     
+
+	float forwardX = cos(pitchRad) * cos(yawRad);
+	float forwardY = cos(pitchRad) * sin(yawRad);
+	float forwardZ = -sin(pitchRad);
+
+	Vector forward(forwardX, forwardY, forwardZ);
+
+	if (fabs(forward.x) < 1e-6) forward.x = 0.0f;
+	if (fabs(forward.y) < 1e-6) forward.y = 0.0f;
+	if (fabs(forward.z) < 1e-6) forward.z = 0.0f;
+
+	return forward.Normalized();
+}
+
+Vector AngleToRightVector(const QAngle& angle) 
+{
+	float yawRad = (angle.y - 90.0f) * (3.14159265f / 180.0f); 
+
+	return Vector(cos(yawRad), sin(yawRad), 0.0f).Normalized();
+}
+
+Vector AngleToUpVector(const QAngle& angle) 
+{
+	return Vector(0.0f, 0.0f, 1.0f);
+}
+
+Vector MoveByEyePosition(const Vector& position, const QAngle& eyeAngles, const Vector& moveVec) 
+{
+	Vector forwardVector = AngleToForwardVector(eyeAngles);
+	Vector rightVector = AngleToRightVector(eyeAngles);
+	Vector upVector = AngleToUpVector(eyeAngles);
+
+	Vector movement = forwardVector * moveVec.x + rightVector * moveVec.y + upVector * moveVec.z;
+
+	return position + movement;
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: This renders the entire 3D view and the in-game hud/viewmodel
@@ -1907,16 +2124,53 @@ const char *COM_GetModDirectory();
 //			whatToDraw - 
 //-----------------------------------------------------------------------------
 // This renders the entire 3D view.
-void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatToDraw )
+#define Amod_VideoFilter(i) \
+if (amod_view_filter_video##i.GetBool()) { \
+DrawQuad(m_filterVideo##i, view.width, view.height); \
+}
+
+void CViewRender::RenderView( const CViewSetup &viewtmp, int nClearFlags, int whatToDraw )
 {
 	m_UnderWaterOverlayMaterial.Shutdown();					// underwater view will set
 
-	m_CurrentView = view;
+	CViewSetup view = viewtmp;
+	CViewSetup tmpview = view;
+	if (amod_view_claustrophobia.GetBool())
+	{
+		view.m_flAspectRatio = amod_view_claustrophobia_amt.GetFloat();
+	}
+
+	Vector vec;
+	Vector pyr;
+
+	if (amod_camera_cinematic.GetBool())
+	{
+		if (!m_HasPrevViewSetup)
+		{
+			m_PrevViewSetup = view;
+			m_HasPrevViewSetup = true;
+		}
+
+		UTIL_StringToVector(vec.Base(), amod_view_override_xyz_amt.GetString());
+		UTIL_StringToVector(pyr.Base(), amod_view_override_pyr_amt.GetString());
+
+		view.origin = MoveByEyePosition(view.origin, view.angles, vec);
+		view.angles += QAngle(pyr.x, pyr.y, pyr.z);
+
+		tmpview = view;
+
+		if (amod_camera_cinematic_lag_origin.GetBool() && amod_camera_cinematic_lag_origin_amt.GetFloat() > 0)
+			view.origin = Lerp(amod_camera_cinematic_lag_origin_amt.GetFloat(), m_PrevViewSetup.origin, view.origin);
+		if (amod_camera_cinematic_lag_angles.GetBool() && amod_camera_cinematic_lag_angles_amt.GetFloat() > 0)
+			view.angles = Lerp(amod_camera_cinematic_lag_angles_amt.GetFloat(), m_PrevViewSetup.angles, view.angles);
+	}
+
+	m_CurrentView = view;	
 
 	C_BaseAnimating::AutoAllowBoneAccess boneaccess( true, true );
 	VPROF( "CViewRender::RenderView" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
-
+	
 	// Don't want TF2 running less than DX 8
 	if ( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() < 80 )
 	{
@@ -2038,7 +2292,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 		GetClientModeNormal()->DoPostScreenSpaceEffects( &view );
 
 		// Now actually draw the viewmodel
-		DrawViewModels( view, whatToDraw & RENDERVIEW_DRAWVIEWMODEL );
+		DrawViewModels( (amod_camera_cinematic_fix.GetBool()) ? tmpview : view, whatToDraw & RENDERVIEW_DRAWVIEWMODEL );
 
 		DrawUnderwaterOverlay();
 
@@ -2056,6 +2310,59 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 		IMaterial* pMaterial = blend ? m_ModulateSingleColor : m_TranslucentSingleColor;
 		render->ViewDrawFade( color, pMaterial );
 		PerformScreenOverlay( view.x, view.y, view.width, view.height );
+
+		UpdateScreenEffectTexture();
+
+		//shoutout to NvC-DmN-CH for the source code
+		if (amod_mirrored.GetBool()) {
+			DrawQuad(m_ScreenFlipMaterial, view.width, view.height);
+		}
+
+		if (amod_view_lense_dirt.GetBool()) {
+			DrawQuad(m_lenseDirtMaterial, view.width, view.height);
+		}
+
+		if (amod_view_binoculars.GetBool()) {
+			Amod_PerformScreenOverlay(m_filterBinoculars, view.x, view.y, view.width, view.height);
+		}
+
+		if (amod_view_bodycam.GetBool()) {
+			Amod_PerformScreenOverlay(m_filterBodyCam, view.x, view.y, view.width, view.height);
+		}
+
+		if (amod_view_square.GetBool())
+		{
+			int width, height;
+			g_pMaterialSystem->GetBackBufferDimensions(width, height);
+
+			float barWidth = amod_view_square_width.GetFloat();
+			float barHeight = amod_view_square_height.GetFloat();
+
+			DrawBar(m_screenBlackMaterial, width, height, -1.0f, -1.0f + barWidth);
+			DrawBar(m_screenBlackMaterial, width, height, 1.0f - barWidth, 1.0f);
+
+			DrawTopBar(m_screenBlackMaterial, width, height, -1.0f, -1.0f + barHeight);
+			DrawTopBar(m_screenBlackMaterial, width, height, 1.0f - barHeight, 1.0f);
+		}
+
+		if (amod_view_blur.GetBool())
+		{
+			Amod_PerformScreenOverlay(m_filterBlur, view.x, view.y, view.width, view.height);
+		}
+
+		Amod_VideoFilter(1);
+		Amod_VideoFilter(2);
+		Amod_VideoFilter(3);
+		Amod_VideoFilter(4);
+		Amod_VideoFilter(5);
+		Amod_VideoFilter(6);
+		Amod_VideoFilter(7);
+		Amod_VideoFilter(8);
+
+		if (amod_vignette.GetBool())
+		{
+			Amod_PerformScreenOverlay(m_filterVignette, view.x, view.y, view.width, view.height);
+		}
 
 		// Prevent sound stutter if going slow
 		engine->Sound_ExtraUpdate();	
@@ -2338,6 +2645,8 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	render->PopView( GetFrustum() );
 	g_WorldListCache.Flush();
+
+	m_PrevViewSetup = view;
 }
 
 //-----------------------------------------------------------------------------
@@ -2687,7 +2996,6 @@ bool DoesViewPlaneIntersectWater( float waterZ, int leafWaterDataID )
 //			&view - the camera view to render from
 //			nClearFlags -  how to clear the buffer
 //-----------------------------------------------------------------------------
-
 void CViewRender::ViewDrawScene_PortalStencil( const CViewSetup &viewIn, ViewCustomVisibility_t *pCustomVisibility )
 {
 	VPROF( "CViewRender::ViewDrawScene_PortalStencil" );
@@ -2699,6 +3007,28 @@ void CViewRender::ViewDrawScene_PortalStencil( const CViewSetup &viewIn, ViewCus
 	QAngle vecOldAngles = CurrentViewAngles();
 
 	int iCurrentViewID = g_CurrentViewID;
+	int iRecursionLevel = g_pPortalRender->GetViewRecursionLevel();
+	Assert( iRecursionLevel > 0 );
+
+	//get references to reflection textures
+	CTextureReference pPrimaryWaterReflectionTexture;
+	pPrimaryWaterReflectionTexture.Init( GetWaterReflectionTexture() );
+	CTextureReference pReplacementWaterReflectionTexture;
+	pReplacementWaterReflectionTexture.Init( portalrendertargets->GetWaterReflectionTextureForStencilDepth( iRecursionLevel ) );
+
+	//get references to refraction textures
+	CTextureReference pPrimaryWaterRefractionTexture;
+	pPrimaryWaterRefractionTexture.Init( GetWaterRefractionTexture() );
+	CTextureReference pReplacementWaterRefractionTexture;
+	pReplacementWaterRefractionTexture.Init( portalrendertargets->GetWaterRefractionTextureForStencilDepth( iRecursionLevel ) );
+
+
+	//swap texture contents for the primary render targets with those we set aside for this recursion level
+	if( pReplacementWaterReflectionTexture != NULL )
+		pPrimaryWaterReflectionTexture->SwapContents( pReplacementWaterReflectionTexture );
+
+	if( pReplacementWaterRefractionTexture != NULL )
+		pPrimaryWaterRefractionTexture->SwapContents( pReplacementWaterRefractionTexture );
 
 	bool bDrew3dSkybox = false;
 	SkyboxVisibility_t nSkyboxVisible = SKYBOX_NOT_VISIBLE;
@@ -2715,7 +3045,7 @@ void CViewRender::ViewDrawScene_PortalStencil( const CViewSetup &viewIn, ViewCus
 	//generate unique view ID's for each stencil view
 	view_id_t iNewViewID = (view_id_t)g_pPortalRender->GetCurrentViewId();
 	SetupCurrentView( view.origin, view.angles, (view_id_t)iNewViewID );
-
+	
 	// update vis data
 	unsigned int visFlags;
 	SetupVis( view, visFlags, pCustomVisibility );
@@ -2734,10 +3064,10 @@ void CViewRender::ViewDrawScene_PortalStencil( const CViewSetup &viewIn, ViewCus
 	DetermineWaterRenderInfo( fogInfo, waterInfo );
 
 	if ( waterInfo.m_bCheapWater )
-	{
+	{		     
 		cplane_t glassReflectionPlane;
 		if ( IsReflectiveGlassInView( viewIn, glassReflectionPlane ) )
-		{
+		{								    
 			CRefPtr<CReflectiveGlassView> pGlassReflectionView = new CReflectiveGlassView( this );
 			pGlassReflectionView->Setup( viewIn, VIEW_CLEAR_DEPTH | VIEW_CLEAR_COLOR | VIEW_CLEAR_OBEY_STENCIL, drawSkybox, fogInfo, waterInfo, glassReflectionPlane );
 			AddViewToScene( pGlassReflectionView );
@@ -2790,6 +3120,14 @@ void CViewRender::ViewDrawScene_PortalStencil( const CViewSetup &viewIn, ViewCus
 	// Return to the previous view
 	SetupCurrentView( vecOldOrigin, vecOldAngles, (view_id_t)iCurrentViewID );
 	g_CurrentViewID = iCurrentViewID; //just in case the cast to view_id_t screwed up the id #
+
+
+	//swap back the water render targets
+	if( pReplacementWaterReflectionTexture != NULL )
+		pPrimaryWaterReflectionTexture->SwapContents( pReplacementWaterReflectionTexture );
+
+	if( pReplacementWaterRefractionTexture != NULL )
+		pPrimaryWaterRefractionTexture->SwapContents( pReplacementWaterRefractionTexture );
 }
 
 void CViewRender::Draw3dSkyboxworld_Portal( const CViewSetup &view, int &nClearFlags, bool &bDrew3dSkybox, SkyboxVisibility_t &nSkyboxVisible, ITexture *pRenderTarget ) 
@@ -4008,7 +4346,7 @@ void CRendering3dView::DrawOpaqueRenderables( ERenderDepthMode DepthMode )
 		}
 	}
 
-	if ( r_threaded_renderables.GetBool() )
+	if ( 0 && r_threaded_renderables.GetBool() )
 	{
 		ParallelProcess( "BoneSetupNpcsLast", arrBoneSetupNpcsLast.Base() + numOpaqueEnts - numNpcs, numNpcs, &SetupBonesOnBaseAnimating );
 		ParallelProcess( "BoneSetupNpcsLast NonNPCs", arrBoneSetupNpcsLast.Base(), numNonNpcsAnimating, &SetupBonesOnBaseAnimating );

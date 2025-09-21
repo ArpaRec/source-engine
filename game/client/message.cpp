@@ -618,7 +618,6 @@ void CHudMessage::Paint()
 	if ( m_gameTitleTime > 0 )
 	{
 		float localTime = gpGlobals->curtime - m_gameTitleTime;
-		float brightness;
 
 		// Maybe timer isn't set yet
 		if ( m_gameTitleTime > gpGlobals->curtime )
@@ -632,6 +631,9 @@ void CHudMessage::Paint()
 		}
 		else
 		{
+#if 0
+			float brightness;
+
 			brightness = FadeBlend( m_pGameTitle->fadein, m_pGameTitle->fadeout, m_pGameTitle->holdtime, localTime );
 
 			int halfWidth = m_iconTitleHalf->Width();
@@ -644,6 +646,7 @@ void CHudMessage::Paint()
 			m_iconTitleHalf->DrawSelf( x, y, Color( m_pGameTitle->r1, m_pGameTitle->g1, m_pGameTitle->b1, brightness * 255 ) );
 			m_iconTitleLife->DrawSelf( x + halfWidth, y, Color( m_pGameTitle->r1, m_pGameTitle->g1, m_pGameTitle->b1, brightness * 255 ) );
 			drawn = 1;
+#endif
 		}
 	}
 
@@ -987,7 +990,7 @@ void CHudMessage::AddChar( int r, int g, int b, int a, wchar_t ch )
 //-----------------------------------------------------------------------------
 void CHudMessage::GetTextExtents( int *wide, int *tall, const char *string )
 {
-	*wide = g_pMatSystemSurface->DrawTextLen( m_hFont, "%s", (char *)string );
+	*wide = g_pMatSystemSurface->DrawTextLen( m_hFont, (char *)string );
 	*tall = vgui::surface()->GetFontTall( m_hFont );
 }
 

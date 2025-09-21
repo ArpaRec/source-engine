@@ -390,7 +390,22 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	Vector	vForward, vRight;
 
 	pPlayer->EyeVectors( &vForward, &vRight, NULL );
-	Vector vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f;
+
+
+	static ConVar* amod_mirrored = cvar->FindVar("amod_mirrored");
+	Vector vecSrc = Vector();
+
+	if (!amod_mirrored)
+		vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f;
+	else
+	{
+		if (amod_mirrored->GetBool())
+			vecSrc = vecEye + vForward * 18.0f - vRight * 8.0f;
+		else
+			vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f;
+
+	}
+
 	CheckThrowPosition( pPlayer, vecEye, vecSrc );
 //	vForward[0] += 0.1f;
 	vForward[2] += 0.1f;
@@ -418,7 +433,18 @@ void CWeaponFrag::LobGrenade( CBasePlayer *pPlayer )
 	Vector	vForward, vRight;
 
 	pPlayer->EyeVectors( &vForward, &vRight, NULL );
-	Vector vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f + Vector( 0, 0, -8 );
+
+	static ConVar* amod_mirrored = cvar->FindVar("amod_mirrored");
+	Vector vecSrc = Vector();
+	if (!amod_mirrored)
+		vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f + Vector( 0, 0, -8 );
+	else
+	{
+		if (amod_mirrored->GetBool())
+			vecSrc = vecEye + vForward * 18.0f - vRight * 8.0f + Vector(0, 0, -8);
+		else
+			vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f + Vector(0, 0, -8);
+	}
 	CheckThrowPosition( pPlayer, vecEye, vecSrc );
 	
 	Vector vecThrow;

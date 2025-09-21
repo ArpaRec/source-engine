@@ -35,7 +35,6 @@ public:
 LINK_ENTITY_TO_CLASS( item_healthkit, CHealthKit );
 PRECACHE_REGISTER(item_healthkit);
 
-
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -101,6 +100,7 @@ class CHealthVial : public CItem
 {
 public:
 	DECLARE_CLASS( CHealthVial, CItem );
+	DECLARE_SERVERCLASS();
 
 	void Spawn( void )
 	{
@@ -146,6 +146,9 @@ public:
 		return false;
 	}
 };
+
+IMPLEMENT_SERVERCLASS_ST(CHealthVial, DT_HealthVial)
+END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( item_healthvial, CHealthVial );
 PRECACHE_REGISTER( item_healthvial );

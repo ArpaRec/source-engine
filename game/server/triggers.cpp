@@ -2517,8 +2517,6 @@ LINK_ENTITY_TO_CLASS( trigger_autosave, CTriggerSave );
 //-----------------------------------------------------------------------------
 void CTriggerSave::Spawn( void )
 {
-	m_minHitPoints = 1;
-
 	if ( g_pGameRules->IsDeathmatch() )
 	{
 		UTIL_Remove( this );
@@ -2536,7 +2534,7 @@ void CTriggerSave::Spawn( void )
 void CTriggerSave::Touch( CBaseEntity *pOther )
 {
 	// Only save on clients
-	if ( !pOther->IsPlayer() || !pOther->IsAlive() )
+	if ( !pOther->IsPlayer() )
 		return;
 
 	if ( m_fDangerousTimer != 0.0f )
@@ -3117,7 +3115,9 @@ void CTriggerCamera::Enable( void )
 		SetAbsVelocity( vec3_origin );
 	}
 
-
+	//waddels - did this cause so the viewcontroller in the background map doesnt go higher
+	pPlayer->SetFOV(pPlayer, 80);
+	
 	pPlayer->SetViewEntity( this );
 
 	// Hide the player's viewmodel
@@ -3688,7 +3688,7 @@ public:
 			return IMotionEvent::SIM_NOTHING;
 
 		// Get a cosine modulated noise between 5 and 20 that is object specific
-		int nNoiseMod = 5+(intp)pObject%15; //
+		int nNoiseMod = 5+(int)pObject%15; // 
 
 		// Turn wind yaw direction into a vector and add noise
 		QAngle vWindAngle = vec3_angle;	
@@ -4623,8 +4623,7 @@ void CTriggerVPhysicsMotion::StartTouch( CBaseEntity *pOther )
 #ifndef _XBOX
 	if ( m_ParticleTrail.m_strMaterialName != NULL_STRING )
 	{
-		CEntityParticleTrail *pTrail = CEntityParticleTrail::Create( pOther, m_ParticleTrail, this ); 
-		pTrail->SetShouldDeletedOnChangelevel( true );
+		CEntityParticleTrail::Create( pOther, m_ParticleTrail, this ); 
 	}
 #endif
 

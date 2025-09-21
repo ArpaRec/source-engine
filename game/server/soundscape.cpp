@@ -14,6 +14,32 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+//amod
+#include "cdll_int.h"
+
+extern IVEngineClient* clientengine;
+
+void AmodSoundscapeDisableChange(IConVar* var, const char*, float)
+{
+	ConVarRef ref(var->GetName());
+	if (ref.GetBool())
+	{
+		if (clientengine)
+		{
+			clientengine->ExecuteClientCmd("stopsoundscape");
+		}
+		else
+		{
+			CBasePlayer* pPlayer = UTIL_GetLocalPlayer();
+			if (!pPlayer)
+				return;
+
+			engine->ClientCommand(pPlayer->edict(), "stopsoundscape");
+		}
+	}
+}
+ConVar amod_soundscapes_disable("amod_soundscapes_disable", "0", 0, "", AmodSoundscapeDisableChange);
+
 ConVar soundscape_debug( "soundscape_debug", "0", FCVAR_CHEAT, "When on, draws lines to all env_soundscape entities. Green lines show the active soundscape, red lines show soundscapes that aren't in range, and white lines show soundscapes that are in range, but not the active soundscape." );
 
 // ----------------------------------------------------------------------------- //
@@ -250,7 +276,7 @@ void CEnvSoundscape::WriteAudioParamsTo( audioparams_t &audio )
 // CONSIDER: if player in water state, autoset and underwater soundscape? 
 void CEnvSoundscape::UpdateForPlayer( ss_update_t &update )
 {
-	if ( !IsEnabled() )
+	if ( !IsEnabled() || amod_soundscapes_disable.GetBool())
 	{
 		if ( update.pCurrentSoundscape == this )
 		{

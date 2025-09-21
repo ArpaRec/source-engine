@@ -30,6 +30,14 @@ public:
 	
 protected:
 
+	float m_flNextFlickerTime; 
+	float m_flFlickerDuration;
+	float m_flFlickerNext;
+	bool m_bIsFlickering;
+
+	Quaternion m_quatPrevOrientation;
+	bool m_hasPrevOrientation;
+
 	void LightOff();
 	void LightOffOld();
 	void LightOffNew();

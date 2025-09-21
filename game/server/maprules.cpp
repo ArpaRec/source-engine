@@ -12,6 +12,11 @@
 #include "entitylist.h"
 #include "ai_hull.h"
 #include "entityoutput.h"
+#include "AloneMod/Amod_SharedDefs.h"
+
+//for IVClientEngine - waddelz
+#include "cdll_int.h"
+#include "fmtstr.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -34,13 +39,13 @@ private:
 	string_t	m_iszMaster;
 };
 
-BEGIN_DATADESC( CRuleEntity )
+BEGIN_DATADESC(CRuleEntity)
 
-	DEFINE_KEYFIELD( m_iszMaster, FIELD_STRING, "master" ),
+DEFINE_KEYFIELD(m_iszMaster, FIELD_STRING, "master"),
 
 END_DATADESC()
 
-
+extern IVEngineClient* clientengine;
 
 void CRuleEntity::Spawn( void )
 {
@@ -351,20 +356,43 @@ void CGameText::Display( CBaseEntity *pActivator )
 
 	if ( MessageToAll() )
 	{
-		UTIL_HudMessageAll( m_textParms, MessageGet() );
+		UTIL_HudMessageAll(m_textParms, MessageGet());
 	}
 	else
 	{
+		//hardcoded this cause why not
+		const char* msg = MessageGet();
+
+		if (!msg || !msg[0])
+			return;
+
+		//hack so people dont play this on anything other then alone mod
+		if (!Q_strcmp(msg, "play this by downloading this on moddb.com/mods/half-life-2-alone-mod")
+			|| !Q_strcmp(msg, "dont play it on whatever your playing it on"))
+			return;
+
+		if (clientengine && !Q_strcmp(msg, "use Tab to toggle the filter"))
+		{
+			const char* key = clientengine->Key_LookupBinding("Amod_ToggleFilter");
+			if (!key)
+				key = "<unbound>";
+
+			if (IsCityMap(gpGlobals->mapname.ToCStr()))
+				msg = CFmtStr("use %s to toggle the filter (Disabled If Daytime)", key);
+			else
+				msg = CFmtStr("use %s to toggle the filter", key);
+		}
+
 		// If we're in singleplayer, show the message to the player.
 		if ( gpGlobals->maxClients == 1 )
 		{
 			CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
-			UTIL_HudMessage( pPlayer, m_textParms, MessageGet() );
+			UTIL_HudMessage( pPlayer, m_textParms, msg );
 		}
 		// Otherwise show the message to the player that triggered us.
 		else if ( pActivator && pActivator->IsNetClient() )
 		{
-			UTIL_HudMessage( ToBasePlayer( pActivator ), m_textParms, MessageGet() );
+			UTIL_HudMessage( ToBasePlayer( pActivator ), m_textParms, msg );
 		}
 	}
 }

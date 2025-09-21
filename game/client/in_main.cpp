@@ -18,7 +18,6 @@
 #include "prediction.h"
 #include "bitbuf.h"
 #include "checksum_md5.h"
-#include "touch.h"
 #include "hltvcamera.h"
 #if defined( REPLAY_ENABLED )
 #include "replay/replaycamera.h"
@@ -88,7 +87,6 @@ ConVar sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCV
 extern ConVar cl_mouselook;
 
 #define UsingMouselook() cl_mouselook.GetBool()
-
 /*
 ===============================================================================
 
@@ -456,10 +454,44 @@ void IN_LookupDown( const CCommand &args ) {KeyDown(&in_lookup, args[1] );}
 void IN_LookupUp( const CCommand &args ) {KeyUp(&in_lookup, args[1] );}
 void IN_LookdownDown( const CCommand &args ) {KeyDown(&in_lookdown, args[1] );}
 void IN_LookdownUp( const CCommand &args ) {KeyUp(&in_lookdown, args[1] );}
-void IN_MoveleftDown( const CCommand &args ) {KeyDown(&in_moveleft, args[1] );}
-void IN_MoveleftUp( const CCommand &args ) {KeyUp(&in_moveleft, args[1] );}
-void IN_MoverightDown( const CCommand &args ) {KeyDown(&in_moveright, args[1] );}
-void IN_MoverightUp( const CCommand &args ) {KeyUp(&in_moveright, args[1] );}
+
+//waddelz - for mirrored effect
+void IN_MoveleftDown( const CCommand &args ) 
+{
+	ConVarRef amod_mirrored("amod_mirrored");
+	if (amod_mirrored.GetBool())
+		KeyDown(&in_moveright, args[1]);
+	else
+		KeyDown(&in_moveleft, args[1]);
+}
+
+void IN_MoveleftUp( const CCommand &args ) 
+{
+	ConVarRef amod_mirrored("amod_mirrored"); 
+	if (amod_mirrored.GetBool())
+		KeyUp(&in_moveright, args[1]);
+	else
+		KeyUp(&in_moveleft, args[1]);
+}
+
+void IN_MoverightDown( const CCommand &args ) 
+{
+	ConVarRef amod_mirrored("amod_mirrored");
+	if (amod_mirrored.GetBool())
+		KeyDown(&in_moveleft, args[1]);
+	else
+		KeyDown(&in_moveright, args[1] );
+}
+
+void IN_MoverightUp( const CCommand &args ) 
+{
+	ConVarRef amod_mirrored("amod_mirrored");
+	if (amod_mirrored.GetBool())
+		KeyUp(&in_moveleft, args[1]);
+	else
+		KeyUp(&in_moveright, args[1]);
+}
+
 void IN_WalkDown( const CCommand &args ) {KeyDown(&in_walk, args[1] );}
 void IN_WalkUp( const CCommand &args ) {KeyUp(&in_walk, args[1] );}
 void IN_SpeedDown( const CCommand &args ) {KeyDown(&in_speed, args[1] );}
@@ -948,8 +980,6 @@ void CInput::ControllerMove( float frametime, CUserCmd *cmd )
 
 	JoyStickMove( frametime, cmd);
 
-	TouchMove( cmd );
-
 	// NVNT if we have a haptic device..
 	if(haptics && haptics->HasDevice())
 	{
@@ -1195,9 +1225,9 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 
 	// Using joystick?
 #ifdef SIXENSE
-	if ( in_joystick.GetInt() || g_pSixenseInput->IsEnabled() || touch_enable.GetInt() )
+	if ( in_joystick.GetInt() || g_pSixenseInput->IsEnabled() )
 #else
-	if ( in_joystick.GetInt() || touch_enable.GetInt() )
+	if ( in_joystick.GetInt() )
 #endif
 	{
 		if ( cmd->forwardmove > 0 )

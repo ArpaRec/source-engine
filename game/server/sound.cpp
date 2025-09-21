@@ -183,6 +183,7 @@ public:
 	void InputFadeIn( inputdata_t &inputdata );
 	void InputFadeOut( inputdata_t &inputdata );
 
+
 	DECLARE_DATADESC();
 
 	float m_radius;
@@ -193,10 +194,11 @@ public:
 	bool m_fActive;		// only true when the entity is playing a looping sound
 	bool m_fLooping;		// true when the sound played will loop
 
-	string_t m_iszSound;			// Path/filename of WAV file to play.
 	string_t m_sSourceEntName;
 	EHANDLE m_hSoundSource;	// entity from which the sound comes
 	int		m_nSoundSourceEntIndex; // In case the entity goes away before we finish stopping the sound...
+
+	string_t m_iszSound;			// Path/filename of WAV file to play.
 };
 
 LINK_ENTITY_TO_CLASS( ambient_generic, CAmbientGeneric );
@@ -240,6 +242,13 @@ END_DATADESC()
 #define SF_AMBIENT_SOUND_EVERYWHERE			1
 #define SF_AMBIENT_SOUND_START_SILENT		16
 #define SF_AMBIENT_SOUND_NOT_LOOPING		32
+
+//AMOD
+//waddelz - no music convar
+
+#include "cdll_int.h"
+
+ConVar amod_music_disable("amod_music_disable", "0", 0, "Disables The Music");
 
 
 //-----------------------------------------------------------------------------
@@ -852,13 +861,27 @@ void CAmbientGeneric::InitModulationParms(void)
 //-----------------------------------------------------------------------------
 // Purpose: Input handler that begins playing the sound.
 //-----------------------------------------------------------------------------
+#include "cdll_int.h"
+
+extern IVEngineClient* clientengine;
+
 void CAmbientGeneric::InputPlaySound( inputdata_t &inputdata )
 {
+	if (amod_music_disable.GetBool() && gpGlobals->eLoadType != MapLoadType_t::MapLoad_Background && Q_strstr(STRING(m_iszSound), "music/"))
+		return;
+
+	//fuck yeah im hardcoding this shit
+	if (!Q_strcmp(m_iszSound.ToCStr(), "music/portal_self_esteem_fund.mp3") && !Q_strcmp(gpGlobals->mapname.ToCStr(), "d1_trainstation_01_d"))
+	{
+		clientengine->ClientCmd_Unrestricted("Sef_PlayIntro");
+		return;
+	}
+
 	if (!m_fActive)
 	{
 		//Adrian: Stop our current sound before starting a new one!
 		SendSound( SND_STOP ); 
-		
+
 		ToggleSound();
 	}
 }
@@ -925,7 +948,6 @@ void CAmbientGeneric::InputToggleSound( inputdata_t &inputdata )
 void CAmbientGeneric::ToggleSound()
 {
 	// m_fActive is true only if a looping sound is playing.
-	
 	if ( m_fActive )
 	{// turn sound off
 

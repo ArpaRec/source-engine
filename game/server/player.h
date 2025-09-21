@@ -620,6 +620,20 @@ public:
 	virtual void			RemoveWearable( CEconWearable *pItem );
 	void					PlayWearableAnimsForPlaybackEvent( wearableanimplayback_t iPlayback );
 #endif
+public:
+	//alone mod
+	CNetworkVar(bool, m_bInRain);
+	float m_fNextRainTime;
+	float m_fNextThunder;
+
+	bool m_bInCoreTimer;
+	bool m_bInCitadelTimer;
+	bool m_bInLoadSaveTime;
+	bool m_bInExpSound;
+	float m_fCoreTimerTime;
+	float m_fCitadelTimerTime;
+	float m_fStartLoadSaveTime;
+	float m_fStartExpSound;
 
 public:
 	// Player Physics Shadow
@@ -803,6 +817,10 @@ public:
 	}
 
 private:
+
+	//Amod
+	float f_dobob;
+
 	// How much of a movement time buffer can we process from this user?
 	float				m_flMovementTimeForUserCmdProcessingRemaining;
 

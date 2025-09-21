@@ -403,6 +403,10 @@ protected:
 	EHANDLE					m_hOldFogController;
 
 public:
+	//amod
+	bool m_bInRain;
+
+public:
 	int m_StuckLast;
 	
 	// Data for only the local player

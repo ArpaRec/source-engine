@@ -1080,6 +1080,7 @@ CON_COMMAND_F( sv_findsoundname, "Find sound names which reference the specified
 #endif // !_XBOX
 
 #else
+	//waddelz - changed this
 void Playgamesound_f( const CCommand &args )
 {
 	CBasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
@@ -1087,16 +1088,14 @@ void Playgamesound_f( const CCommand &args )
 	{
 		if ( args.ArgC() > 2 )
 		{
-			Vector position = pPlayer->EyePosition();
-			Vector forward;
-			pPlayer->GetVectors( &forward, NULL, NULL );
-			position += atof( args[2] ) * forward;
+			Vector position;
+			UTIL_StringToVector(position.Base(), args.Arg(2));
 			CPASAttenuationFilter filter( pPlayer );
 			EmitSound_t params;
 			params.m_pSoundName = args[1];
 			params.m_pOrigin = &position;
-			params.m_flVolume = 0.0f;
-			params.m_nPitch = 0;
+			params.m_flVolume = 100.0f;
+			params.m_nPitch = 100;
 			g_SoundEmitterSystem.EmitSound( filter, 0, params );
 		}
 		else

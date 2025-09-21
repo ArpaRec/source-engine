@@ -15,6 +15,9 @@
 #include "tier1/KeyValues.h"
 #include "toolframework_client.h"
 
+//amod
+#include "AloneMod/AmodCvars.h"
+
 #ifdef HL2_CLIENT_DLL
 #include "c_basehlplayer.h"
 #endif // HL2_CLIENT_DLL
@@ -35,12 +38,10 @@ void r_newflashlightCallback_f( IConVar *pConVar, const char *pOldString, float 
 static ConVar r_newflashlight( "r_newflashlight", "1", FCVAR_CHEAT, "", r_newflashlightCallback_f );
 static ConVar r_swingflashlight( "r_swingflashlight", "1", FCVAR_CHEAT );
 static ConVar r_flashlightlockposition( "r_flashlightlockposition", "0", FCVAR_CHEAT );
-static ConVar r_flashlightfov( "r_flashlightfov", "45.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsetx( "r_flashlightoffsetx", "10.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsety( "r_flashlightoffsety", "-20.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsetz( "r_flashlightoffsetz", "24.0", FCVAR_CHEAT );
 static ConVar r_flashlightnear( "r_flashlightnear", "4.0", FCVAR_CHEAT );
-static ConVar r_flashlightfar( "r_flashlightfar", "750.0", FCVAR_CHEAT );
 static ConVar r_flashlightconstant( "r_flashlightconstant", "0.0", FCVAR_CHEAT );
 static ConVar r_flashlightlinear( "r_flashlightlinear", "100.0", FCVAR_CHEAT );
 static ConVar r_flashlightquadratic( "r_flashlightquadratic", "0.0", FCVAR_CHEAT );
@@ -50,7 +51,8 @@ static ConVar r_flashlightshadowatten( "r_flashlightshadowatten", "0.35", FCVAR_
 static ConVar r_flashlightladderdist( "r_flashlightladderdist", "40.0", FCVAR_CHEAT );
 static ConVar mat_slopescaledepthbias_shadowmap( "mat_slopescaledepthbias_shadowmap", "16", FCVAR_CHEAT );
 static ConVar mat_depthbias_shadowmap(	"mat_depthbias_shadowmap", "0.0005", FCVAR_CHEAT  );
-
+ConVar r_flashlightfov("r_flashlightfov", "45.0");
+ConVar r_flashlightfar( "r_flashlightfar", "750.0" );
 
 void r_newflashlightCallback_f( IConVar *pConVar, const char *pOldString, float flOldValue )
 {
@@ -86,6 +88,15 @@ CFlashlightEffect::CFlashlightEffect(int nEntIndex)
 	{
 		m_FlashlightTexture.Init( "effects/flashlight001", TEXTURE_GROUP_OTHER, true );
 	}
+
+	//lag
+	m_hasPrevOrientation = false;
+
+	//flicker
+	m_flNextFlickerTime = gpGlobals->curtime + RandomFloat(amod_flashlightflicker_wait_time_min.GetFloat(), amod_flashlightflicker_wait_time_max.GetFloat());
+	m_flFlickerDuration = 0.0f;
+	m_flFlickerNext = 0.0f;
+	m_bIsFlickering = false;
 }
 
 
@@ -115,6 +126,7 @@ void CFlashlightEffect::TurnOff()
 {
 	if (m_bIsOn)
 	{
+		m_hasPrevOrientation = false;
 		m_bIsOn = false;
 		LightOff();
 	}
@@ -269,7 +281,7 @@ void CFlashlightEffect::UpdateLightNew(const Vector &vecPos, const Vector &vecFo
 	C_BaseHLPlayer *pPlayer = (C_BaseHLPlayer *)C_BasePlayer::GetLocalPlayer();
 	if ( pPlayer )
 	{
-		float flBatteryPower = ( pPlayer->m_HL2Local.m_flFlashBattery >= 0.0f ) ? ( pPlayer->m_HL2Local.m_flFlashBattery ) : pPlayer->m_HL2Local.m_flSuitPower;
+		float flBatteryPower = ( pPlayer->h >= 0.0f ) ? ( pPlayer->m_HL2Local.m_flFlashBattery ) : pPlayer->m_HL2Local.m_flSuitPower;
 		if ( flBatteryPower <= 10.0f )
 		{
 			float flScale;
@@ -336,6 +348,54 @@ void CFlashlightEffect::UpdateLightNew(const Vector &vecPos, const Vector &vecFo
 	state.m_flShadowAtten = r_flashlightshadowatten.GetFloat();
 	state.m_flShadowSlopeScaleDepthBias = mat_slopescaledepthbias_shadowmap.GetFloat();
 	state.m_flShadowDepthBias = mat_depthbias_shadowmap.GetFloat();
+
+	if (amod_flashlightlag.GetBool() && !engine->IsPaused())
+	{
+		BasisToQuaternion(vDir, vRight, vUp, state.m_quatOrientation);
+
+		if (m_hasPrevOrientation)
+		{
+			QuaternionSlerp(m_quatPrevOrientation, state.m_quatOrientation, amod_flashlightlag_amt.GetFloat(), state.m_quatOrientation);
+		}
+		else
+		{
+			m_hasPrevOrientation = true;
+		}
+		m_quatPrevOrientation = state.m_quatOrientation;
+	}
+
+	if (amod_flashlightflicker.GetBool())
+	{
+
+		if (gpGlobals->curtime >= m_flNextFlickerTime)
+		{
+			if (!m_bIsFlickering)
+			{
+				// Start flickering
+				m_bIsFlickering = true;
+				m_flFlickerDuration = RandomFloat(amod_flashlightflicker_duration_min.GetFloat(), amod_flashlightflicker_duration_max.GetFloat());
+			}
+		}
+
+		if (m_bIsFlickering)
+		{
+			if (gpGlobals->curtime <= m_flNextFlickerTime + m_flFlickerDuration)
+			{
+				if (gpGlobals->curtime >= m_flFlickerNext)
+				{
+					state.m_fLinearAtten = RandomFloat(amod_flashlightflicker_brightness_min.GetFloat(), amod_flashlightflicker_brightness_max.GetFloat());
+					m_flFlickerNext = gpGlobals->curtime + random->RandomFloat(0, amod_flashlightflicker_time_interval_max.GetFloat());
+				}
+			}
+			else
+			{
+				// End flickering
+				m_bIsFlickering = false;
+				m_flNextFlickerTime = gpGlobals->curtime + RandomFloat(amod_flashlightflicker_wait_time_min.GetFloat(), amod_flashlightflicker_wait_time_max.GetFloat()); // Next flicker interval
+			}
+		}
+
+	}
 
 	if( m_FlashlightHandle == CLIENTSHADOW_INVALID_HANDLE )
 	{
@@ -510,9 +570,9 @@ void CHeadlightEffect::UpdateLight( const Vector &vecPos, const Vector &vecDir, 
 	BasisToQuaternion( basisX, basisY, basisZ, state.m_quatOrientation );
 		
 	state.m_vecLightOrigin = vecPos;
-
-	state.m_fHorizontalFOVDegrees = 45.0f;
-	state.m_fVerticalFOVDegrees = 30.0f;
+	
+	state.m_fHorizontalFOVDegrees = 70.0f;
+	state.m_fVerticalFOVDegrees = 60.0f;
 	state.m_fQuadraticAtten = r_flashlightquadratic.GetFloat();
 	state.m_fLinearAtten = r_flashlightlinear.GetFloat();
 	state.m_fConstantAtten = r_flashlightconstant.GetFloat();

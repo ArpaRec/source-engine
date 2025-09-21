@@ -16,6 +16,8 @@
 #include "engine/ivdebugoverlay.h"
 #include "tier0/icommandline.h"
 
+#include "AloneMod/Amod_SharedDefs.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -206,9 +208,6 @@ public:
 	void ProcessSoundMixer( KeyValues *pSoundMixer, subsoundscapeparams_t &params );
 	// "dsp_volume"
 	void ProcessDSPVolume( KeyValues *pKey, subsoundscapeparams_t &params );
-
-
-private:
 
 	bool	IsBeingRestored() const
 	{
@@ -461,6 +460,39 @@ CON_COMMAND_F_COMPLETION( playsoundscape, "Forces a soundscape to play", FCVAR_C
 	g_SoundscapeSystem.ForceSoundscape( pSoundscapeName, radius );
 }
 
+float GetVolumeFromSoundscapeName(const char* name)
+{
+	if (Q_strstr(name, "klab") || Q_strstr(name, "inside.ravenholm_cave"))
+		return 0.1f;
+	else if (Q_strstr(name, "inside.prison") || Q_strstr(name, "inside_prison"))
+		return 0.15f;
+	else if (Q_strstr(name, "inside.under_ep1"))
+		return 0.08;
+	else if (Q_strstr(name, "inside"))
+		return Q_strstr(name, "citad") ? 0.09f : 0.3f;
+	else if (Q_strstr(name, "Nothing"))
+		return 0.4f;
+
+	return 0.9f;
+}
+
+CON_COMMAND(amod_soundscape_stoprain, "")
+{
+	for (int i = 0; i < g_SoundscapeSystem.m_loopingSounds.Count(); i++)
+	{
+		loopingsound_t& loopingsound = g_SoundscapeSystem.m_loopingSounds[i];
+		if (Q_strstr(loopingsound.pWaveName, "rain"))
+		{
+			loopingsound.volumeTarget = 0.0f;
+		}
+	}
+}
+
+CON_COMMAND(amod_soundscape_startrain, "")
+{
+	int current = g_SoundscapeSystem.GetCurrentSoundscape();
+	g_SoundscapeSystem.StartNewSoundscape(g_SoundscapeSystem.SoundscapeByIndex(current));
+}
 
 CON_COMMAND_F( stopsoundscape, "Stops all soundscape processing and fades current looping sounds", FCVAR_CHEAT )
 {
@@ -578,16 +610,16 @@ void C_SoundscapeSystem::UpdateAudioParams( audioparams_t &audio )
 
 
 // Called when a soundscape is activated (leading edge of becoming the active soundscape)
-void C_SoundscapeSystem::StartNewSoundscape( KeyValues *pSoundscape )
+void C_SoundscapeSystem::StartNewSoundscape(KeyValues* pSoundscape)
 {
 	int i;
 
 	// Reset the system
 	// fade out the current loops
-	for ( i = m_loopingSounds.Count()-1; i >= 0; --i )
+	for (i = m_loopingSounds.Count() - 1; i >= 0; --i)
 	{
 		m_loopingSounds[i].volumeTarget = 0;
-		if ( !pSoundscape )
+		if (!pSoundscape)
 		{
 			// if we're cancelling the soundscape, stop the sound immediately
 			m_loopingSounds[i].volumeCurrent = 0;
@@ -602,6 +634,35 @@ void C_SoundscapeSystem::StartNewSoundscape( KeyValues *pSoundscape )
 
 	if ( pSoundscape )
 	{
+		static ConVarRef amod_rain_type("amod_rain_type");
+		static ConVarRef amod_rain_enable("amod_rain_enable");
+		if (amod_rain_type.GetInt() && amod_rain_enable.GetInt())
+		{
+			bool bDo = true;
+			if (amod_rain_type.GetInt() == 2)
+			{
+				CBasePlayer* pPlayer = CBasePlayer::GetLocalPlayer();
+				if (pPlayer)
+					bDo = pPlayer->m_bInRain;
+			}
+
+			if (bDo)
+			{
+				subsoundscapeparams_t params;
+				params.allowDSP = false;
+				params.wroteSoundMixer = false;
+				params.wroteDSPVolume = false;
+
+				params.masterVolume = GetVolumeFromSoundscapeName(pSoundscape->GetName());
+				params.startingPosition = 0;
+				params.recurseLevel = 0;
+				params.positionOverride = -1;
+				params.ambientPositionOverride = -1;
+
+				StartSubSoundscape(SoundscapeByIndex(FindSoundscapeByName("common.rain")), params);
+			}
+		}
+
 		subsoundscapeparams_t params;
 		params.allowDSP = true;
 		params.wroteSoundMixer = false;

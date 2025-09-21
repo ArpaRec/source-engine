@@ -24,7 +24,12 @@ class VPlane;
 
 
 // near and far Z it uses to render the world.
+#ifndef HL1_CLIENT_DLL
+//waddelz - changed to 2
+#define VIEW_NEARZ	2
+#else
 #define VIEW_NEARZ	3
+#endif
 //#define VIEW_FARZ	28400
 
 

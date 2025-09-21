@@ -19,7 +19,8 @@
 
 extern bool g_bRollingCredits;
 
-ConVar fov_desired( "fov_desired", "75", FCVAR_ARCHIVE | FCVAR_USERINFO, "Sets the base field-of-view.", true, 75.0, true, 110.0 );
+//waddelz - changed fov bounds
+ConVar fov_desired( "fov_desired", "75", FCVAR_ARCHIVE | FCVAR_USERINFO, "Sets the base field-of-view.", true, 75.0, true, 170 );
 
 //-----------------------------------------------------------------------------
 // Globals

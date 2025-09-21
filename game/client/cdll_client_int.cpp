@@ -147,8 +147,6 @@
 #include "fbxsystem/fbxsystem.h"
 #endif
 
-#include "touch.h"
-
 extern vgui::IInputInternal *g_InputInternal;
 
 //=============================================================================
@@ -170,6 +168,9 @@ extern vgui::IInputInternal *g_InputInternal;
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
 #endif
+
+//alone mod
+#include "AloneMod/ISongPanel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -305,7 +306,7 @@ C_BaseEntityClassList::~C_BaseEntityClassList()
 class CDataChangedEvent
 {
 public:
-	CDataChangedEvent() = default;
+	CDataChangedEvent() {}
 	CDataChangedEvent( IClientNetworkable *ent, DataUpdateType_t updateType, int *pStoredEvent )
 	{
 		m_pEntity = ent;
@@ -729,7 +730,6 @@ public:
 	void PrecacheMaterial( const char *pMaterialName );
 
 	virtual bool IsConnectedUserInfoChangeAllowed( IConVar *pCvar );
-	virtual void IN_TouchEvent( int type, int fingerId, int x, int y );
 
 private:
 	void UncacheAllMaterials( );
@@ -868,7 +868,7 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 
 	// Hook up global variables
 	gpGlobals = pGlobals;
-
+	
 	ConnectTier1Libraries( &appSystemFactory, 1 );
 	ConnectTier2Libraries( &appSystemFactory, 1 );
 	ConnectTier3Libraries( &appSystemFactory, 1 );
@@ -1034,7 +1034,6 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	g_pClientMode->InitViewport();
 
 	gHUD.Init();
-	gTouch.Init();
 
 	g_pClientMode->Init();
 
@@ -1072,7 +1071,7 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 
 	if ( !PhysicsDLLInit( physicsFactory ) )
 		return false;
-
+	
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetEntitySaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetPhysSaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetViewEffectsRestoreBlockHandler() );
@@ -1199,8 +1198,7 @@ void CHLClient::Shutdown( void )
 	
 	gHUD.Shutdown();
 	VGui_Shutdown();
-	gTouch.Shutdown();
-
+	
 	ParticleMgr()->Term();
 	
 	ClearKeyValuesCache();
@@ -1631,7 +1629,6 @@ void CHLClient::LevelInitPreEntity( char const* pMapName )
 	g_RagdollLVManager.SetLowViolence( pMapName );
 
 	gHUD.LevelInit();
-	gTouch.LevelInit();
 
 #if defined( REPLAY_ENABLED )
 	// Initialize replay ragdoll recorder
@@ -1675,6 +1672,33 @@ void CHLClient::ResetStringTablePointers()
 //-----------------------------------------------------------------------------
 // Purpose: Per level de-init
 //-----------------------------------------------------------------------------
+static float SefEndTime = 0.0f;
+static bool SefStillIn = true;
+
+CON_COMMAND(Amod_SefStart, "")
+{
+	if (!SefStillIn)
+		return;
+
+	float start = -(SefEndTime - 3 - gpGlobals->curtime);
+	enginesound->EmitAmbientSound("music/portal_self_esteem_fund.mp3", 0.8, 100, SND_SHOULDPAUSE, start);
+}
+
+CON_COMMAND(Sef_PlayIntro, "")
+{
+	enginesound->EmitAmbientSound("music/portal_self_esteem_fund.mp3", 0.8, 100, SND_SHOULDPAUSE);
+}
+
+CON_COMMAND(Amod_SefStop, "")
+{
+	SefStillIn = false;
+}
+
+CON_COMMAND(Amod_SefStart_01, "")
+{
+	SefStillIn = true;
+}
+
 void CHLClient::LevelShutdown( void )
 {
 	// HACK: Bogus, but the logic is too complicated in the engine
@@ -1682,6 +1706,8 @@ void CHLClient::LevelShutdown( void )
 		return;
 
 	g_bLevelInitialized = false;
+
+	songpanel->OnLevelShutdown();
 
 	// Disable abs recomputations when everything is shutting down
 	CBaseEntity::EnableAbsRecomputations( false );
@@ -1742,6 +1768,9 @@ void CHLClient::LevelShutdown( void )
 	CReplayRagdollRecorder::Instance().Shutdown();
 	CReplayRagdollCache::Instance().Shutdown();
 #endif
+
+	if (SefStillIn)
+		SefEndTime = gpGlobals->curtime;
 }
 
 
@@ -2636,22 +2665,3 @@ CSteamID GetSteamIDForPlayerIndex( int iPlayerIndex )
 }
 
 #endif
-
- 
-void CHLClient::IN_TouchEvent( int type, int fingerId, int x, int y )
-{
-	if( enginevgui->IsGameUIVisible() )
-		return;
-
-	touch_event_t ev;
-
-	ev.type = type;
-	ev.fingerid = fingerId;
-	memcpy( &ev.x, &x, sizeof(ev.x) );
-	memcpy( &ev.y, &y, sizeof(ev.y) );
-
-	if( type == IE_FingerMotion )
-		inputsystem->GetTouchAccumulators( fingerId, ev.dx, ev.dy );
-
-	gTouch.ProcessEvent( &ev );
-}

@@ -142,6 +142,10 @@ public:
 	// Apply a battery
 	bool ApplyBattery( float powerMultiplier = 1.0 );
 
+	//Alone Mod
+	void SetCanHack( bool bState ) { m_bPickupThatCanInBinHack = bState; }
+	bool GetCanHack( void ) { return m_bPickupThatCanInBinHack; }
+
 	// Commander Mode for controller NPCs
 	enum CommanderCommand_t
 	{
@@ -317,6 +321,9 @@ protected:	// Jeep: Portal_Player needs access to this variable to overload Play
 	bool				m_bPlayUseDenySound;		// Signaled by PlayerUse, but can be unset by HL2 ladder code...
 
 private:
+
+	//Alone mod cool can hack thingy for d1_trainstation_01 and d3_c17_03_d
+	bool				m_bPickupThatCanInBinHack;
 
 	CAI_Squad *			m_pPlayerAISquad;
 	CSimpleSimTimer		m_CommanderUpdateTimer;

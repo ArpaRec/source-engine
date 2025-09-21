@@ -678,22 +678,6 @@ void CWorld::Precache( void )
 	// Call all registered precachers.
 	CPrecacheRegister::Precache();	
 
-	if ( m_iszChapterTitle != NULL_STRING )
-	{
-		DevMsg( 2, "Chapter title: %s\n", STRING(m_iszChapterTitle) );
-		CMessage *pMessage = (CMessage *)CBaseEntity::Create( "env_message", vec3_origin, vec3_angle, NULL );
-		if ( pMessage )
-		{
-			pMessage->SetMessage( m_iszChapterTitle );
-			m_iszChapterTitle = NULL_STRING;
-
-			// send the message entity a play message command, delayed by 1 second
-			pMessage->AddSpawnFlags( SF_MESSAGE_ONCE );
-			pMessage->SetThink( &CMessage::SUB_CallUseToggle );
-			pMessage->SetNextThink( gpGlobals->curtime + 1.0f );
-		}
-	}
-
 	g_iszFuncBrushClassname = AllocPooledString("func_brush");
 }
 

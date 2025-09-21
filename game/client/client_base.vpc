@@ -16,6 +16,7 @@ $MacroRequired "GAMENAME"
 $Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
 $include "$SRCDIR\vpc_scripts\protobuf_builder.vpc"
 $Include "$SRCDIR\vpc_scripts\source_replay.vpc"	[$TF]
+$Include "$SRCDIR\game\protobuf_include.vpc"
 
 $Configuration	"Debug"
 {
@@ -100,6 +101,9 @@ $Project
 		$File	"$SRCDIR\game\shared\replay_gamestats_shared.cpp"	[$BUILD_REPLAY]
 		$File	"$SRCDIR\game\shared\replay_gamestats_shared.h"	[$BUILD_REPLAY]
 		
+		$File	"$SRCDIR\game\client\youtubeapi.h"	[$BUILD_REPLAY]
+		$File	"$SRCDIR\game\client\youtubeapi.cpp"	[$BUILD_REPLAY]
+		{
 			$Configuration
 			{
 				$Compiler
@@ -145,6 +149,10 @@ $Project
 			$File	"replay\vgui\replayrenderoverlay.h"
 			$File	"replay\vgui\replayreminderpanel.cpp"
 			$File	"replay\vgui\replayreminderpanel.h"
+			$File	"replay\replayyoutubeapi.cpp"
+			$File	"replay\replayyoutubeapi.h"
+			$File	"replay\replayyoutubeapi_key.cpp" [!$SOURCESDK]
+			$File	"replay\replayyoutubeapi_key_sdk.cpp" [$SOURCESDK]
 			
 			$File	"game_controls\slideshowpanel.cpp"
 			$File	"game_controls\slideshowpanel.h"
@@ -165,6 +173,44 @@ $Project
 		
 	$Folder	"Source Files"
 	{
+		$Folder	"Alone Mod"
+		{
+			$Folder "Commands"
+			{
+				$File "AloneMod\AmodCommands.cpp"
+			}
+			$Folder "Convars"
+			{
+				$File "$SRCDIR\game\shared\AloneMod\AmodCvars.cpp"
+				$File "$SRCDIR\game\shared\AloneMod\AmodCvars.h"
+			}
+			$Folder "Entities"
+			{
+				$File "$SRCDIR\game\client\AloneMod\c_amod_entities.cpp"
+				$File "$SRCDIR\game\client\AloneMod\c_amod_entities.h"
+			}
+			$Folder "Shared Definitions"
+			{
+				$File "$SRCDIR\game\shared\AloneMod\Amod_SharedDefs.cpp"
+				$File "$SRCDIR\game\shared\AloneMod\Amod_SharedDefs.h"
+			}
+			$Folder "UI"
+			{
+				$File 	"$SRCDIR\game\client\AloneMod\BackgroundPanel.cpp"
+				$File 	"$SRCDIR\game\client\AloneMod\IBackgroundPanel.h"
+				$File 	"$SRCDIR\game\client\AloneMod\INewGamePanel.h"
+				$File 	"$SRCDIR\game\client\AloneMod\IOptionsPanel.h"
+				$File 	"$SRCDIR\game\client\AloneMod\ISongPanel.h"
+				$File 	"$SRCDIR\game\client\AloneMod\IEffectsPanel.h"
+				$File 	"$SRCDIR\game\client\AloneMod\NewGamePanel.cpp"
+				$File 	"$SRCDIR\game\client\AloneMod\OptionsPanel.cpp"
+				$File 	"$SRCDIR\game\client\AloneMod\SongPanel.cpp"
+				$File 	"$SRCDIR\game\client\AloneMod\EffectsPanel.cpp"
+			}
+			$File	"$SRCDIR\game\client\episodic\c_prop_coreball.cpp"
+			$File	"$SRCDIR\game\client\episodic\c_prop_scalable.cpp"
+		}
+		
 		$File	"hl2\C_Func_Monitor.cpp"
 		$File	"geiger.cpp"
 		$File	"history_resource.cpp"
@@ -496,8 +542,6 @@ $Project
 		//Haptics
 		$File	"$SRCDIR\public\haptics\haptic_msgs.cpp"	[!$X360]
 		$File	"$SRCDIR\public\haptics\haptic_utils.cpp"	[$WIN32&&!$X360]
-
-		$File	"$SRCDIR\game\client\touch.cpp"
 
 		$Folder	"Sixense"
 		{

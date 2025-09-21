@@ -70,6 +70,8 @@
 #include "vote_controller.h"
 #include "ai_speech.h"
 
+#include "AloneMod/AmodCvars.h"
+
 #if defined USES_ECON_ITEMS
 #include "econ_wearable.h"
 #endif
@@ -97,6 +99,8 @@ ConVar sv_bonus_challenge( "sv_bonus_challenge", "0", FCVAR_REPLICATED, "Set to 
 
 static ConVar sv_maxusrcmdprocessticks( "sv_maxusrcmdprocessticks", "24", FCVAR_NOTIFY, "Maximum number of client-issued usrcmd ticks that can be replayed in packet loss conditions, 0 to allow no restrictions" );
 
+#include "cdll_int.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -115,6 +119,10 @@ ConVar cl_backspeed( "cl_backspeed", "450", FCVAR_REPLICATED | FCVAR_CHEAT );
 
 // This is declared in the engine, too
 ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "If cheats are enabled, then you can noclip with the game paused (for doing screenshots, etc.)." );
+
+//alone mod
+ConVar amod_standbob_wait("amod_standbob_wait", "3.0");
+ConVar amod_standbob_enabled("amod_standbob_enabled", "0");
 
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
@@ -191,7 +199,7 @@ ConVar  sv_player_display_usercommand_errors( "sv_player_display_usercommand_err
 
 ConVar  player_debug_print_damage( "player_debug_print_damage", "0", FCVAR_CHEAT, "When true, print amount and type of all damage received by player to console." );
 
-
+//alone mod
 void CC_GiveCurrentAmmo( void )
 {
 	CBasePlayer *pPlayer = UTIL_PlayerByIndex(1);
@@ -459,6 +467,24 @@ BEGIN_DATADESC( CBasePlayer )
 
 	// DEFINE_UTLVECTOR( m_vecPlayerCmdInfo ),
 	// DEFINE_UTLVECTOR( m_vecPlayerSimInfo ),
+
+	//amod
+	DEFINE_FIELD(f_dobob, FIELD_TIME),
+
+	DEFINE_FIELD(m_bInRain, FIELD_BOOLEAN),
+	DEFINE_FIELD(m_fNextRainTime, FIELD_TIME),
+	DEFINE_FIELD(m_fNextThunder, FIELD_TIME),
+
+	DEFINE_FIELD(m_bInCoreTimer, FIELD_BOOLEAN),
+	DEFINE_FIELD(m_bInCitadelTimer, FIELD_BOOLEAN),
+	DEFINE_FIELD(m_bInLoadSaveTime, FIELD_BOOLEAN),
+	DEFINE_FIELD(m_bInExpSound, FIELD_BOOLEAN),
+
+	DEFINE_FIELD(m_fCoreTimerTime, FIELD_TIME),
+	DEFINE_FIELD(m_fCitadelTimerTime, FIELD_TIME),
+	DEFINE_FIELD(m_fStartLoadSaveTime, FIELD_TIME),
+	DEFINE_FIELD(m_fStartExpSound, FIELD_TIME),
+
 END_DATADESC()
 
 int giPrecacheGrunt = 0;
@@ -817,25 +843,34 @@ int TrainSpeed(int iSpeed, int iMax)
 	return iRet;
 }
 
-void CBasePlayer::DeathSound( const CTakeDamageInfo &info )
+extern ConVar amod_nomap_restart;
+
+void CBasePlayer::DeathSound(const CTakeDamageInfo& info)
 {
 	// temporarily using pain sounds for death sounds
 
 	// Did we die from falling?
-	if ( m_bitsDamageType & DMG_FALL )
+	if (m_bitsDamageType & DMG_FALL)
 	{
 		// They died in the fall. Play a splat sound.
-		EmitSound( "Player.FallGib" );
+		EmitSound("Player.FallGib");
 	}
 	else
 	{
-		EmitSound( "Player.Death" );
+		EmitSound("Player.Death");
 	}
 
 	// play one of the suit death alarms
-	if ( IsSuitEquipped() )
+	if (amod_nomap_restart.GetBool())
 	{
 		UTIL_EmitGroupnameSuit(edict(), "HEV_DEAD");
+	}
+	else
+	{
+		if (IsSuitEquipped())
+		{
+			UTIL_EmitGroupnameSuit(edict(), "HEV_DEAD");
+		}
 	}
 }
 
@@ -1054,353 +1089,424 @@ bool CBasePlayer::ShouldTakeDamageInCommentaryMode( const CTakeDamageInfo &input
 	return true;
 }
 
+
 int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 {
-	// have suit diagnose the problem - ie: report damage type
-	int bitsDamage = inputInfo.GetDamageType();
-	int ffound = true;
-	int fmajor;
-	int fcritical;
-	int fTookDamage;
-	int ftrivial;
-	float flRatio;
-	float flBonus;
-	float flHealthPrev = m_iHealth;
-
-	CTakeDamageInfo info = inputInfo;
-
-	IServerVehicle *pVehicle = GetVehicle();
-	if ( pVehicle )
-	{
-		// Let the vehicle decide if we should take this damage or not
-		if ( pVehicle->PassengerShouldReceiveDamage( info ) == false )
-			return 0;
-	}
-
- 	if ( IsInCommentaryMode() )
-	{
-		if( !ShouldTakeDamageInCommentaryMode( info ) )
-			return 0;
-	}
-
-	if ( GetFlags() & FL_GODMODE )
+	if (amod_enable_god.GetBool())
 		return 0;
 
-	if ( m_debugOverlays & OVERLAY_BUDDHA_MODE ) 
+	if (amod_nomap_restart.GetBool())
 	{
-		if ((m_iHealth - info.GetDamage()) <= 0)
+		if (!IsAlive())
+			return 0;
+
+		int bitsDamage = inputInfo.GetDamageType();
+		CTakeDamageInfo info = inputInfo;
+
+		if (!g_pGameRules->FPlayerCanTakeDamage(this, info.GetAttacker(), inputInfo))
 		{
-			m_iHealth = 1;
+			// Refuse the damage
 			return 0;
 		}
-	}
 
-	// Early out if there's no damage
-	if ( !info.GetDamage() )
+		IServerVehicle* pVehicle = GetVehicle();
+		if (pVehicle)
+		{
+			// Let the vehicle decide if we should take this damage or not
+			if (pVehicle->PassengerShouldReceiveDamage(info) == false)
+				return 0;
+		}
+
+		if (IsInCommentaryMode())
+		{
+			if (!ShouldTakeDamageInCommentaryMode(info))
+				return 0;
+		}
+
+		if (GetFlags() & FL_GODMODE)
+			return 0;
+
+		if (m_debugOverlays & OVERLAY_BUDDHA_MODE)
+		{
+			if ((m_iHealth - info.GetDamage()) <= 0)
+			{
+				m_iHealth = 1;
+				return 0;
+			}
+		}
+
+		if (!info.GetDamage())
+			return 0;
+
+		if (HasHaptics())
+			HapticsDamage(this, info);
+
+		DamageEffect(info.GetDamage(), bitsDamage);
+
+		if (bitsDamage & DMG_BLAST)
+		{
+			OnDamagedByExplosion(info);
+		}
+
+		if (GetHealth() - info.GetDamage() >= 1)
+		{
+			SetHealth(GetHealth() - info.GetDamage());
+		}
+		else
+		{
+			engine->ClientCommand(edict(), "kill");
+		}
+
 		return 0;
-
-	if( old_armor.GetBool() )
-	{
-		flBonus = OLD_ARMOR_BONUS;
-		flRatio = OLD_ARMOR_RATIO;
 	}
 	else
 	{
-		flBonus = ARMOR_BONUS;
-		flRatio = ARMOR_RATIO;
-	}
+		// have suit diagnose the problem - ie: report damage type
+		int bitsDamage = inputInfo.GetDamageType();
+		int ffound = true;
+		int fmajor;
+		int fcritical;
+		int fTookDamage;
+		int ftrivial;
+		float flRatio;
+		float flBonus;
+		float flHealthPrev = m_iHealth;
 
-	if ( ( info.GetDamageType() & DMG_BLAST ) && g_pGameRules->IsMultiplayer() )
-	{
-		// blasts damage armor more.
-		flBonus *= 2;
-	}
+		CTakeDamageInfo info = inputInfo;
 
-	// Already dead
-	if ( !IsAlive() )
-		return 0;
-	// go take the damage first
-
-	
-	if ( !g_pGameRules->FPlayerCanTakeDamage( this, info.GetAttacker(), inputInfo ) )
-	{
-		// Refuse the damage
-		return 0;
-	}
-
-	// print to console if the appropriate cvar is set
-#ifdef DISABLE_DEBUG_HISTORY
-	if (player_debug_print_damage.GetBool() && info.GetDamage() > 0)
-#endif
-	{
-		char dmgtype[64];
-		CTakeDamageInfo::DebugGetDamageTypeString( info.GetDamageType(), dmgtype, 512 );
-		char outputString[256];
-		Q_snprintf( outputString, 256, "%f: Player %s at [%0.2f %0.2f %0.2f] took %f damage from %s, type %s\n", gpGlobals->curtime, GetDebugName(),
-			GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, info.GetDamage(), info.GetInflictor()->GetDebugName(), dmgtype );
-
-		//Msg( "%f: Player %s at [%0.2f %0.2f %0.2f] took %f damage from %s, type %s\n", gpGlobals->curtime, GetDebugName(),
-		//	GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, info.GetDamage(), info.GetInflictor()->GetDebugName(), dmgtype );
-
-		ADD_DEBUG_HISTORY( HISTORY_PLAYER_DAMAGE, outputString );
-#ifndef DISABLE_DEBUG_HISTORY
-		if ( player_debug_print_damage.GetBool() ) // if we're not in here just for the debug history
-#endif
+		IServerVehicle* pVehicle = GetVehicle();
+		if (pVehicle)
 		{
-			Msg( "%s", outputString);
+			// Let the vehicle decide if we should take this damage or not
+			if (pVehicle->PassengerShouldReceiveDamage(info) == false)
+				return 0;
 		}
-	}
 
-	// keep track of amount of damage last sustained
-	m_lastDamageAmount = info.GetDamage();
-
-	// Armor. 
-	if (m_ArmorValue && !(info.GetDamageType() & (DMG_FALL | DMG_DROWN | DMG_POISON | DMG_RADIATION)) )// armor doesn't protect against fall or drown damage!
-	{
-		float flNew = info.GetDamage() * flRatio;
-
-		float flArmor;
-
-		flArmor = (info.GetDamage() - flNew) * flBonus;
-
-		if( !old_armor.GetBool() )
+		if (IsInCommentaryMode())
 		{
-			if( flArmor < 1.0 )
+			if (!ShouldTakeDamageInCommentaryMode(info))
+				return 0;
+		}
+
+		if (GetFlags() & FL_GODMODE)
+			return 0;
+
+		if (m_debugOverlays & OVERLAY_BUDDHA_MODE)
+		{
+			if ((m_iHealth - info.GetDamage()) <= 0)
 			{
-				flArmor = 1.0;
+				m_iHealth = 1;
+				return 0;
 			}
 		}
 
-		// Does this use more armor than we have?
-		if (flArmor > m_ArmorValue)
+		// Early out if there's no damage
+		if (!info.GetDamage())
+			return 0;
+
+		if (old_armor.GetBool())
 		{
-			flArmor = m_ArmorValue;
-			flArmor *= (1/flBonus);
-			flNew = info.GetDamage() - flArmor;
-			m_DmgSave = m_ArmorValue;
-			m_ArmorValue = 0;
+			flBonus = OLD_ARMOR_BONUS;
+			flRatio = OLD_ARMOR_RATIO;
 		}
 		else
 		{
-			m_DmgSave = flArmor;
-			m_ArmorValue -= flArmor;
+			flBonus = ARMOR_BONUS;
+			flRatio = ARMOR_RATIO;
 		}
-		
-		info.SetDamage( flNew );
-	}
+
+		if ((info.GetDamageType() & DMG_BLAST) && g_pGameRules->IsMultiplayer())
+		{
+			// blasts damage armor more.
+			flBonus *= 2;
+		}
+
+		// Already dead
+		if (!IsAlive())
+			return 0;
+		// go take the damage first
+
+
+		if (!g_pGameRules->FPlayerCanTakeDamage(this, info.GetAttacker(), inputInfo))
+		{
+			// Refuse the damage
+			return 0;
+		}
+
+		// print to console if the appropriate cvar is set
+#ifdef DISABLE_DEBUG_HISTORY
+		if (player_debug_print_damage.GetBool() && info.GetDamage() > 0)
+#endif
+		{
+			char dmgtype[64];
+			CTakeDamageInfo::DebugGetDamageTypeString(info.GetDamageType(), dmgtype, 512);
+			char outputString[256];
+			Q_snprintf(outputString, 256, "%f: Player %s at [%0.2f %0.2f %0.2f] took %f damage from %s, type %s\n", gpGlobals->curtime, GetDebugName(),
+				GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, info.GetDamage(), info.GetInflictor()->GetDebugName(), dmgtype);
+
+			//Msg( "%f: Player %s at [%0.2f %0.2f %0.2f] took %f damage from %s, type %s\n", gpGlobals->curtime, GetDebugName(),
+			//	GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, info.GetDamage(), info.GetInflictor()->GetDebugName(), dmgtype );
+
+			ADD_DEBUG_HISTORY(HISTORY_PLAYER_DAMAGE, outputString);
+#ifndef DISABLE_DEBUG_HISTORY
+			if (player_debug_print_damage.GetBool()) // if we're not in here just for the debug history
+#endif
+			{
+				Msg("%s", outputString);
+			}
+		}
+
+		// keep track of amount of damage last sustained
+		m_lastDamageAmount = info.GetDamage();
+
+		// Armor. 
+		if (m_ArmorValue && !(info.GetDamageType() & (DMG_FALL | DMG_DROWN | DMG_POISON | DMG_RADIATION)))// armor doesn't protect against fall or drown damage!
+		{
+			float flNew = info.GetDamage() * flRatio;
+
+			float flArmor;
+
+			flArmor = (info.GetDamage() - flNew) * flBonus;
+
+			if (!old_armor.GetBool())
+			{
+				if (flArmor < 1.0)
+				{
+					flArmor = 1.0;
+				}
+			}
+
+			// Does this use more armor than we have?
+			if (flArmor > m_ArmorValue)
+			{
+				flArmor = m_ArmorValue;
+				flArmor *= (1 / flBonus);
+				flNew = info.GetDamage() - flArmor;
+				m_DmgSave = m_ArmorValue;
+				m_ArmorValue = 0;
+			}
+			else
+			{
+				m_DmgSave = flArmor;
+				m_ArmorValue -= flArmor;
+			}
+
+			info.SetDamage(flNew);
+		}
 
 
 #if defined( WIN32 ) && !defined( _X360 )
-	// NVNT if player's client has a haptic device send them a user message with the damage.
-	if(HasHaptics())
-		HapticsDamage(this,info);
+		// NVNT if player's client has a haptic device send them a user message with the damage.
+		if (HasHaptics())
+			HapticsDamage(this, info);
 #endif
 
-	// this cast to INT is critical!!! If a player ends up with 0.5 health, the engine will get that
-	// as an int (zero) and think the player is dead! (this will incite a clientside screentilt, etc)
-	
-	// NOTENOTE: jdw - We are now capable of retaining the mantissa of this damage value and deferring its application
-	
-	// info.SetDamage( (int)info.GetDamage() );
+		// this cast to INT is critical!!! If a player ends up with 0.5 health, the engine will get that
+		// as an int (zero) and think the player is dead! (this will incite a clientside screentilt, etc)
 
-	// Call up to the base class
-	fTookDamage = BaseClass::OnTakeDamage( info );
+		// NOTENOTE: jdw - We are now capable of retaining the mantissa of this damage value and deferring its application
 
-	// Early out if the base class took no damage
-	if ( !fTookDamage )
-		return 0;
+		// info.SetDamage( (int)info.GetDamage() );
 
-	// add to the damage total for clients, which will be sent as a single
-	// message at the end of the frame
-	// todo: remove after combining shotgun blasts?
-	if ( info.GetInflictor() && info.GetInflictor()->edict() )
-		m_DmgOrigin = info.GetInflictor()->GetAbsOrigin();
+		// Call up to the base class
+		fTookDamage = BaseClass::OnTakeDamage(info);
 
-	m_DmgTake += (int)info.GetDamage();
-	
-	// Reset damage time countdown for each type of time based damage player just sustained
-	for (int i = 0; i < CDMG_TIMEBASED; i++)
-	{
-		// Make sure the damage type is really time-based.
-		// This is kind of hacky but necessary until we setup DamageType as an enum.
-		int iDamage = ( DMG_PARALYZE << i );
-		if ( ( info.GetDamageType() & iDamage ) && g_pGameRules->Damage_IsTimeBased( iDamage ) )
+		// Early out if the base class took no damage
+		if (!fTookDamage)
+			return 0;
+
+		// add to the damage total for clients, which will be sent as a single
+		// message at the end of the frame
+		// todo: remove after combining shotgun blasts?
+		if (info.GetInflictor() && info.GetInflictor()->edict())
+			m_DmgOrigin = info.GetInflictor()->GetAbsOrigin();
+
+		m_DmgTake += (int)info.GetDamage();
+
+		// Reset damage time countdown for each type of time based damage player just sustained
+		for (int i = 0; i < CDMG_TIMEBASED; i++)
 		{
-			m_rgbTimeBasedDamage[i] = 0;
-		}
-	}
-
-	// Display any effect associate with this damage type
-	DamageEffect(info.GetDamage(),bitsDamage);
-
-	// how bad is it, doc?
-	ftrivial = (m_iHealth > 75 || m_lastDamageAmount < 5);
-	fmajor = (m_lastDamageAmount > 25);
-	fcritical = (m_iHealth < 30);
-
-	// handle all bits set in this damage message,
-	// let the suit give player the diagnosis
-
-	// UNDONE: add sounds for types of damage sustained (ie: burn, shock, slash )
-
-	// UNDONE: still need to record damage and heal messages for the following types
-
-		// DMG_BURN	
-		// DMG_FREEZE
-		// DMG_BLAST
-		// DMG_SHOCK
-
-	m_bitsDamageType |= bitsDamage; // Save this so we can report it to the client
-	m_bitsHUDDamage = -1;  // make sure the damage bits get resent
-
-	while (fTookDamage && (!ftrivial || g_pGameRules->Damage_IsTimeBased( bitsDamage ) ) && ffound && bitsDamage)
-	{
-		ffound = false;
-
-		if (bitsDamage & DMG_CLUB)
-		{
-			if (fmajor)
-				SetSuitUpdate("!HEV_DMG4", false, SUIT_NEXT_IN_30SEC);	// minor fracture
-			bitsDamage &= ~DMG_CLUB;
-			ffound = true;
-		}
-		if (bitsDamage & (DMG_FALL | DMG_CRUSH))
-		{
-			if (fmajor)
-				SetSuitUpdate("!HEV_DMG5", false, SUIT_NEXT_IN_30SEC);	// major fracture
-			else
-				SetSuitUpdate("!HEV_DMG4", false, SUIT_NEXT_IN_30SEC);	// minor fracture
-	
-			bitsDamage &= ~(DMG_FALL | DMG_CRUSH);
-			ffound = true;
-		}
-		
-		if (bitsDamage & DMG_BULLET)
-		{
-			if (m_lastDamageAmount > 5)
-				SetSuitUpdate("!HEV_DMG6", false, SUIT_NEXT_IN_30SEC);	// blood loss detected
-			//else
-			//	SetSuitUpdate("!HEV_DMG0", false, SUIT_NEXT_IN_30SEC);	// minor laceration
-			
-			bitsDamage &= ~DMG_BULLET;
-			ffound = true;
-		}
-
-		if (bitsDamage & DMG_SLASH)
-		{
-			if (fmajor)
-				SetSuitUpdate("!HEV_DMG1", false, SUIT_NEXT_IN_30SEC);	// major laceration
-			else
-				SetSuitUpdate("!HEV_DMG0", false, SUIT_NEXT_IN_30SEC);	// minor laceration
-
-			bitsDamage &= ~DMG_SLASH;
-			ffound = true;
-		}
-		
-		if (bitsDamage & DMG_SONIC)
-		{
-			if (fmajor)
-				SetSuitUpdate("!HEV_DMG2", false, SUIT_NEXT_IN_1MIN);	// internal bleeding
-			bitsDamage &= ~DMG_SONIC;
-			ffound = true;
-		}
-
-		if (bitsDamage & (DMG_POISON | DMG_PARALYZE))
-		{
-			if (bitsDamage & DMG_POISON)
+			// Make sure the damage type is really time-based.
+			// This is kind of hacky but necessary until we setup DamageType as an enum.
+			int iDamage = (DMG_PARALYZE << i);
+			if ((info.GetDamageType() & iDamage) && g_pGameRules->Damage_IsTimeBased(iDamage))
 			{
-				m_nPoisonDmg += info.GetDamage();
-				m_tbdPrev = gpGlobals->curtime;
-				m_rgbTimeBasedDamage[itbd_PoisonRecover] = 0;
+				m_rgbTimeBasedDamage[i] = 0;
+			}
+		}
+
+		// Display any effect associate with this damage type
+		DamageEffect(info.GetDamage(), bitsDamage);
+
+		// how bad is it, doc?
+		ftrivial = (m_iHealth > 75 || m_lastDamageAmount < 5);
+		fmajor = (m_lastDamageAmount > 25);
+		fcritical = (m_iHealth < 30);
+
+		// handle all bits set in this damage message,
+		// let the suit give player the diagnosis
+
+		// UNDONE: add sounds for types of damage sustained (ie: burn, shock, slash )
+
+		// UNDONE: still need to record damage and heal messages for the following types
+
+			// DMG_BURN	
+			// DMG_FREEZE
+			// DMG_BLAST
+			// DMG_SHOCK
+
+		m_bitsDamageType |= bitsDamage; // Save this so we can report it to the client
+		m_bitsHUDDamage = -1;  // make sure the damage bits get resent
+
+		while (fTookDamage && (!ftrivial || g_pGameRules->Damage_IsTimeBased(bitsDamage)) && ffound && bitsDamage)
+		{
+			ffound = false;
+
+			if (bitsDamage & DMG_CLUB)
+			{
+				if (fmajor)
+					SetSuitUpdate("!HEV_DMG4", false, SUIT_NEXT_IN_30SEC);	// minor fracture
+				bitsDamage &= ~DMG_CLUB;
+				ffound = true;
+			}
+			if (bitsDamage & (DMG_FALL | DMG_CRUSH))
+			{
+				if (fmajor)
+					SetSuitUpdate("!HEV_DMG5", false, SUIT_NEXT_IN_30SEC);	// major fracture
+				else
+					SetSuitUpdate("!HEV_DMG4", false, SUIT_NEXT_IN_30SEC);	// minor fracture
+
+				bitsDamage &= ~(DMG_FALL | DMG_CRUSH);
+				ffound = true;
 			}
 
-			SetSuitUpdate("!HEV_DMG3", false, SUIT_NEXT_IN_1MIN);	// blood toxins detected
-			bitsDamage &= ~( DMG_POISON | DMG_PARALYZE );
-			ffound = true;
+			if (bitsDamage & DMG_BULLET)
+			{
+				if (m_lastDamageAmount > 5)
+					SetSuitUpdate("!HEV_DMG6", false, SUIT_NEXT_IN_30SEC);	// blood loss detected
+				//else
+				//	SetSuitUpdate("!HEV_DMG0", false, SUIT_NEXT_IN_30SEC);	// minor laceration
+
+				bitsDamage &= ~DMG_BULLET;
+				ffound = true;
+			}
+
+			if (bitsDamage & DMG_SLASH)
+			{
+				if (fmajor)
+					SetSuitUpdate("!HEV_DMG1", false, SUIT_NEXT_IN_30SEC);	// major laceration
+				else
+					SetSuitUpdate("!HEV_DMG0", false, SUIT_NEXT_IN_30SEC);	// minor laceration
+
+				bitsDamage &= ~DMG_SLASH;
+				ffound = true;
+			}
+
+			if (bitsDamage & DMG_SONIC)
+			{
+				if (fmajor)
+					SetSuitUpdate("!HEV_DMG2", false, SUIT_NEXT_IN_1MIN);	// internal bleeding
+				bitsDamage &= ~DMG_SONIC;
+				ffound = true;
+			}
+
+			if (bitsDamage & (DMG_POISON | DMG_PARALYZE))
+			{
+				if (bitsDamage & DMG_POISON)
+				{
+					m_nPoisonDmg += info.GetDamage();
+					m_tbdPrev = gpGlobals->curtime;
+					m_rgbTimeBasedDamage[itbd_PoisonRecover] = 0;
+				}
+
+				SetSuitUpdate("!HEV_DMG3", false, SUIT_NEXT_IN_1MIN);	// blood toxins detected
+				bitsDamage &= ~(DMG_POISON | DMG_PARALYZE);
+				ffound = true;
+			}
+
+			if (bitsDamage & DMG_ACID)
+			{
+				SetSuitUpdate("!HEV_DET1", false, SUIT_NEXT_IN_1MIN);	// hazardous chemicals detected
+				bitsDamage &= ~DMG_ACID;
+				ffound = true;
+			}
+
+			if (bitsDamage & DMG_NERVEGAS)
+			{
+				SetSuitUpdate("!HEV_DET0", false, SUIT_NEXT_IN_1MIN);	// biohazard detected
+				bitsDamage &= ~DMG_NERVEGAS;
+				ffound = true;
+			}
+
+			if (bitsDamage & DMG_RADIATION)
+			{
+				SetSuitUpdate("!HEV_DET2", false, SUIT_NEXT_IN_1MIN);	// radiation detected
+				bitsDamage &= ~DMG_RADIATION;
+				ffound = true;
+			}
+			if (bitsDamage & DMG_SHOCK)
+			{
+				bitsDamage &= ~DMG_SHOCK;
+				ffound = true;
+			}
 		}
 
-		if (bitsDamage & DMG_ACID)
+		float flPunch = -2;
+
+		if (hl2_episodic.GetBool() && info.GetAttacker() && !FInViewCone(info.GetAttacker()))
 		{
-			SetSuitUpdate("!HEV_DET1", false, SUIT_NEXT_IN_1MIN);	// hazardous chemicals detected
-			bitsDamage &= ~DMG_ACID;
-			ffound = true;
+			if (info.GetDamage() > 10.0f)
+				flPunch = -10;
+			else
+				flPunch = RandomFloat(-5, -7);
 		}
 
-		if (bitsDamage & DMG_NERVEGAS)
+		m_Local.m_vecPunchAngle.SetX(flPunch);
+
+		if (fTookDamage && !ftrivial && fmajor && flHealthPrev >= 75)
 		{
-			SetSuitUpdate("!HEV_DET0", false, SUIT_NEXT_IN_1MIN);	// biohazard detected
-			bitsDamage &= ~DMG_NERVEGAS;
-			ffound = true;
+			// first time we take major damage...
+			// turn automedic on if not on
+			SetSuitUpdate("!HEV_MED1", false, SUIT_NEXT_IN_30MIN);	// automedic on
+
+			// give morphine shot if not given recently
+			SetSuitUpdate("!HEV_HEAL7", false, SUIT_NEXT_IN_30MIN);	// morphine shot
 		}
 
-		if (bitsDamage & DMG_RADIATION)
+		if (fTookDamage && !ftrivial && fcritical && flHealthPrev < 75)
 		{
-			SetSuitUpdate("!HEV_DET2", false, SUIT_NEXT_IN_1MIN);	// radiation detected
-			bitsDamage &= ~DMG_RADIATION;
-			ffound = true;
+
+			// already took major damage, now it's critical...
+			if (m_iHealth < 6)
+				SetSuitUpdate("!HEV_HLTH3", false, SUIT_NEXT_IN_10MIN);	// near death
+			else if (m_iHealth < 20)
+				SetSuitUpdate("!HEV_HLTH2", false, SUIT_NEXT_IN_10MIN);	// health critical
+
+			// give critical health warnings
+			if (!random->RandomInt(0, 3) && flHealthPrev < 50)
+				SetSuitUpdate("!HEV_DMG7", false, SUIT_NEXT_IN_5MIN); //seek medical attention
 		}
-		if (bitsDamage & DMG_SHOCK)
-		{
-			bitsDamage &= ~DMG_SHOCK;
-			ffound = true;
-		}
-	}
 
-	float flPunch = -2;
-
-	if( hl2_episodic.GetBool() && info.GetAttacker() && !FInViewCone( info.GetAttacker() ) )
-	{
-		if( info.GetDamage() > 10.0f )
-			flPunch = -10;
-		else
-			flPunch = RandomFloat( -5, -7 );
-	}
-
-	m_Local.m_vecPunchAngle.SetX( flPunch );
-
-	if (fTookDamage && !ftrivial && fmajor && flHealthPrev >= 75) 
-	{
-		// first time we take major damage...
-		// turn automedic on if not on
-		SetSuitUpdate("!HEV_MED1", false, SUIT_NEXT_IN_30MIN);	// automedic on
-
-		// give morphine shot if not given recently
-		SetSuitUpdate("!HEV_HEAL7", false, SUIT_NEXT_IN_30MIN);	// morphine shot
-	}
-	
-	if (fTookDamage && !ftrivial && fcritical && flHealthPrev < 75)
-	{
-
-		// already took major damage, now it's critical...
-		if (m_iHealth < 6)
-			SetSuitUpdate("!HEV_HLTH3", false, SUIT_NEXT_IN_10MIN);	// near death
-		else if (m_iHealth < 20)
-			SetSuitUpdate("!HEV_HLTH2", false, SUIT_NEXT_IN_10MIN);	// health critical
-	
-		// give critical health warnings
-		if (!random->RandomInt(0,3) && flHealthPrev < 50)
-			SetSuitUpdate("!HEV_DMG7", false, SUIT_NEXT_IN_5MIN); //seek medical attention
-	}
-
-	// if we're taking time based damage, warn about its continuing effects
-	if (fTookDamage && g_pGameRules->Damage_IsTimeBased( info.GetDamageType() ) && flHealthPrev < 75)
+		// if we're taking time based damage, warn about its continuing effects
+		if (fTookDamage && g_pGameRules->Damage_IsTimeBased(info.GetDamageType()) && flHealthPrev < 75)
 		{
 			if (flHealthPrev < 50)
 			{
-				if (!random->RandomInt(0,3))
+				if (!random->RandomInt(0, 3))
 					SetSuitUpdate("!HEV_DMG7", false, SUIT_NEXT_IN_5MIN); //seek medical attention
 			}
 			else
 				SetSuitUpdate("!HEV_HLTH1", false, SUIT_NEXT_IN_10MIN);	// health dropping
 		}
 
-	// Do special explosion damage effect
-	if ( bitsDamage & DMG_BLAST )
-	{
-		OnDamagedByExplosion( info );
-	}
+		// Do special explosion damage effect
+		if (bitsDamage & DMG_BLAST)
+		{
+			OnDamagedByExplosion(info);
+		}
 
-	return fTookDamage;
+		return fTookDamage;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -1646,86 +1752,121 @@ int CBasePlayer::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	return 1;
 }
 
+float f_canpress = 0.0f;
 
-void CBasePlayer::Event_Killed( const CTakeDamageInfo &info )
+void CBasePlayer::Event_Killed(const CTakeDamageInfo& info)
 {
-	CSound *pSound;
-
-	if ( Hints() )
+	if (amod_nomap_restart.GetBool())
 	{
-		Hints()->ResetHintTimers();
+		AddSolidFlags(FSOLID_NOT_SOLID);
+
+		IPhysicsObject *obj = VPhysicsGetObject();
+		if (obj)
+		{
+			obj->EnableCollisions(false);
+		}
+
+		Weapon_DropAll();
+
+		if (m_iHealth < -99)
+		{
+			m_iHealth = 0;
+		}
+
+		if (FlashlightIsOn())
+		{
+			FlashlightTurnOff();
+		}
+
+		m_lifeState = LIFE_DEAD;
+		pl.deadflag = true;
+
+		DeathSound(info);
+		f_canpress = gpGlobals->curtime + 2.5f;
+
+		//if (!(info.GetAmmoType() & DMG_DROWN))
+			UTIL_ScreenFade(this, color32{ 128,0,0,128 }, 1.5f, 7.5f, FFADE_PURGE | FFADE_IN);
 	}
+	else
+	{
+		CSound* pSound;
 
-	g_pGameRules->PlayerKilled( this, info );
+		if (Hints())
+		{
+			Hints()->ResetHintTimers();
+		}
 
-	gamestats->Event_PlayerKilled( this, info );
+		g_pGameRules->PlayerKilled(this, info);
 
-	RumbleEffect( RUMBLE_STOP_ALL, 0, RUMBLE_FLAGS_NONE );
+		gamestats->Event_PlayerKilled(this, info);
+
+		RumbleEffect(RUMBLE_STOP_ALL, 0, RUMBLE_FLAGS_NONE);
 
 #if defined( WIN32 ) && !defined( _X360 )
-	// NVNT set the drag to zero in the case of underwater death.
-	HapticSetDrag(this,0);
+		// NVNT set the drag to zero in the case of underwater death.
+		HapticSetDrag(this, 0);
 #endif
-	ClearUseEntity();
-	
-	// this client isn't going to be thinking for a while, so reset the sound until they respawn
-	pSound = CSoundEnt::SoundPointerForIndex( CSoundEnt::ClientSoundIndex( edict() ) );
-	{
-		if ( pSound )
+		ClearUseEntity();
+
+		// this client isn't going to be thinking for a while, so reset the sound until they respawn
+		pSound = CSoundEnt::SoundPointerForIndex(CSoundEnt::ClientSoundIndex(edict()));
 		{
-			pSound->Reset();
+			if (pSound)
+			{
+				pSound->Reset();
+			}
 		}
+
+		// don't let the status bar glitch for players with <0 health.
+		if (m_iHealth < -99)
+		{
+			m_iHealth = 0;
+		}
+
+		// holster the current weapon
+		if (GetActiveWeapon())
+		{
+			GetActiveWeapon()->Holster();
+		}
+
+		SetAnimation(PLAYER_DIE);
+
+		if (!IsObserver())
+		{
+			SetViewOffset(VEC_DEAD_VIEWHEIGHT_SCALED(this));
+		}
+		m_lifeState = LIFE_DYING;
+
+		pl.deadflag = true;
+		AddSolidFlags(FSOLID_NOT_SOLID);
+		// force contact points to get flushed if no longer valid
+		// UNDONE: Always do this on RecheckCollisionFilter() ?
+		IPhysicsObject* pObject = VPhysicsGetObject();
+		if (pObject)
+		{
+			pObject->RecheckContactPoints();
+		}
+
+		SetMoveType(MOVETYPE_FLYGRAVITY);
+		SetGroundEntity(NULL);
+
+		// clear out the suit message cache so we don't keep chattering
+		SetSuitUpdate(NULL, false, 0);
+
+		// reset FOV
+		SetFOV(this, 0);
+
+		if (FlashlightIsOn())
+		{
+			FlashlightTurnOff();
+		}
+
+		m_flDeathTime = gpGlobals->curtime;
+
+		ClearLastKnownArea();
+
+		BaseClass::Event_Killed(info);
 	}
-
-	// don't let the status bar glitch for players with <0 health.
-	if (m_iHealth < -99)
-	{
-		m_iHealth = 0;
-	}
-
-	// holster the current weapon
-	if ( GetActiveWeapon() )
-	{
-		GetActiveWeapon()->Holster();
-	}
-
-	SetAnimation( PLAYER_DIE );
-
-	if ( !IsObserver() )
-	{
-		SetViewOffset( VEC_DEAD_VIEWHEIGHT_SCALED( this ) );
-	}
-	m_lifeState		= LIFE_DYING;
-
-	pl.deadflag = true;
-	AddSolidFlags( FSOLID_NOT_SOLID );
-	// force contact points to get flushed if no longer valid
-	// UNDONE: Always do this on RecheckCollisionFilter() ?
-	IPhysicsObject *pObject = VPhysicsGetObject();
-	if ( pObject )
-	{
-		pObject->RecheckContactPoints();
-	}
-
-	SetMoveType( MOVETYPE_FLYGRAVITY );
-	SetGroundEntity( NULL );
-
-	// clear out the suit message cache so we don't keep chattering
-	SetSuitUpdate(NULL, false, 0);
-
-	// reset FOV
-	SetFOV( this, 0 );
-	
-	if ( FlashlightIsOn() )
-	{
-		 FlashlightTurnOff();
-	}
-
-	m_flDeathTime = gpGlobals->curtime;
-
-	ClearLastKnownArea();
-
-	BaseClass::Event_Killed( info );
 }
 
 void CBasePlayer::Event_Dying( const CTakeDamageInfo& info )
@@ -1752,8 +1893,23 @@ void CBasePlayer::Event_Dying( const CTakeDamageInfo& info )
 	BaseClass::Event_Dying( info );
 }
 
+bool StartsWith(const char* word, const char* find)
+{
+	const char* entPrefix = find;
+	int i = 0;
 
-// Set the activity based on an event or current state
+	while (entPrefix[i] != '\0')
+	{
+		if (entPrefix[i] != word[i])
+		{
+			return false;
+		}
+		i++;
+	}
+
+	return true;
+}
+
 void CBasePlayer::SetAnimation( PLAYER_ANIM playerAnim )
 {
 	int animDesired;
@@ -2072,96 +2228,149 @@ void CBasePlayer::PlayerDeathThink(void)
 {
 	float flForward;
 
-	SetNextThink( gpGlobals->curtime + 0.1f );
-
-	if (GetFlags() & FL_ONGROUND)
+	if (amod_nomap_restart.GetBool())
 	{
-		flForward = GetAbsVelocity().Length() - 20;
-		if (flForward <= 0)
+		int fAnyButtonDown = (m_nButtons & ~IN_SCORE);
+
+		// Strip out the duck key from this check if it's toggled
+		if ((fAnyButtonDown & IN_DUCK) && GetToggledDuckState())
 		{
-			SetAbsVelocity( vec3_origin );
+			fAnyButtonDown &= ~IN_DUCK;
 		}
-		else
-		{
-			Vector vecNewVelocity = GetAbsVelocity();
-			VectorNormalize( vecNewVelocity );
-			vecNewVelocity *= flForward;
-			SetAbsVelocity( vecNewVelocity );
-		}
-	}
 
-	if ( HasWeapons() )
-	{
-		// we drop the guns here because weapons that have an area effect and can kill their user
-		// will sometimes crash coming back from CBasePlayer::Killed() if they kill their owner because the
-		// player class sometimes is freed. It's safer to manipulate the weapons once we know
-		// we aren't calling into any of their code anymore through the player pointer.
-		PackDeadPlayerItems();
-	}
-
-	if (GetModelIndex() && (!IsSequenceFinished()) && (m_lifeState == LIFE_DYING))
-	{
-		StudioFrameAdvance( );
-
-		m_iRespawnFrames++;
-		if ( m_iRespawnFrames < 60 )  // animations should be no longer than this
-			return;
-	}
-
-	if (m_lifeState == LIFE_DYING)
-	{
-		m_lifeState = LIFE_DEAD;
-		m_flDeathAnimTime = gpGlobals->curtime;
-	}
-	
-	StopAnimation();
-
-	IncrementInterpolationFrame();
-	m_flPlaybackRate = 0.0;
-	
-	int fAnyButtonDown = (m_nButtons & ~IN_SCORE);
-	
-	// Strip out the duck key from this check if it's toggled
-	if ( (fAnyButtonDown & IN_DUCK) && GetToggledDuckState())
-	{
-		fAnyButtonDown &= ~IN_DUCK;
-	}
-
-	// wait for all buttons released
-	if (m_lifeState == LIFE_DEAD)
-	{
-		if (fAnyButtonDown)
+		if (gpGlobals->curtime < f_canpress)
 			return;
 
-		if ( g_pGameRules->FPlayerCanRespawn( this ) )
+		if (!fAnyButtonDown
+			&& !(g_pGameRules->IsMultiplayer() && forcerespawn.GetInt() > 0 && (gpGlobals->curtime > (m_flDeathTime + 5))))
+			return;
+
+		m_nButtons = 0;
+
+		UTIL_ScreenFade(this, color32{ 0,0,0,0 }, 0.0f, 0.0f, FFADE_PURGE | FFADE_IN);
+
+		RemoveSolidFlags(FSOLID_NOT_SOLID);
+
+		IPhysicsObject* obj = VPhysicsGetObject();
+		if (obj)
 		{
-			m_lifeState = LIFE_RESPAWNABLE;
+			obj->EnableCollisions(true);
 		}
-		
-		return;
-	}
 
-// if the player has been dead for one second longer than allowed by forcerespawn, 
-// forcerespawn isn't on. Send the player off to an intermission camera until they 
-// choose to respawn.
-	if ( g_pGameRules->IsMultiplayer() && ( gpGlobals->curtime > (m_flDeathTime + DEATH_ANIMATION_TIME) ) && !IsObserver() )
+		CBaseEntity* pEnt = gEntList.FirstEnt();
+		while (pEnt)
+		{
+			if (!Q_strcmp(pEnt->GetClassname(), "info_player_start"))
+			{
+				if (pEnt->HasSpawnFlags(1))
+				{
+					Vector pos(pEnt->GetAbsOrigin().x, pEnt->GetAbsOrigin().y, pEnt->GetAbsOrigin().z + 2);
+					SetAbsOrigin(pos);
+					SetAbsAngles(pEnt->GetAbsAngles());
+					break;
+				}
+			}
+			pEnt = gEntList.NextEnt(pEnt);
+		}
+
+		SetHealth(100);
+
+		m_lifeState = LIFE_ALIVE;
+		pl.deadflag = false;
+	}
+	else
 	{
-		// go to dead camera. 
-		StartObserverMode( m_iObserverLastMode );
+		SetNextThink(gpGlobals->curtime + 0.1f);
+
+		if (GetFlags() & FL_ONGROUND)
+		{
+			flForward = GetAbsVelocity().Length() - 20;
+			if (flForward <= 0)
+			{
+				SetAbsVelocity(vec3_origin);
+			}
+			else
+			{
+				Vector vecNewVelocity = GetAbsVelocity();
+				VectorNormalize(vecNewVelocity);
+				vecNewVelocity *= flForward;
+				SetAbsVelocity(vecNewVelocity);
+			}
+		}
+
+		if (HasWeapons())
+		{
+			// we drop the guns here because weapons that have an area effect and can kill their user
+			// will sometimes crash coming back from CBasePlayer::Killed() if they kill their owner because the
+			// player class sometimes is freed. It's safer to manipulate the weapons once we know
+			// we aren't calling into any of their code anymore through the player pointer.
+			PackDeadPlayerItems();
+		}
+
+		if (GetModelIndex() && (!IsSequenceFinished()) && (m_lifeState == LIFE_DYING))
+		{
+			StudioFrameAdvance();
+
+			m_iRespawnFrames++;
+			if (m_iRespawnFrames < 60)  // animations should be no longer than this
+				return;
+		}
+
+		if (m_lifeState == LIFE_DYING)
+		{
+			m_lifeState = LIFE_DEAD;
+			m_flDeathAnimTime = gpGlobals->curtime;
+		}
+
+		StopAnimation();
+
+		IncrementInterpolationFrame();
+		m_flPlaybackRate = 0.0;
+
+		int fAnyButtonDown = (m_nButtons & ~IN_SCORE);
+
+		// Strip out the duck key from this check if it's toggled
+		if ((fAnyButtonDown & IN_DUCK) && GetToggledDuckState())
+		{
+			fAnyButtonDown &= ~IN_DUCK;
+		}
+
+		// wait for all buttons released
+		if (m_lifeState == LIFE_DEAD)
+		{
+			if (fAnyButtonDown)
+				return;
+
+			if (g_pGameRules->FPlayerCanRespawn(this))
+			{
+				m_lifeState = LIFE_RESPAWNABLE;
+			}
+
+			return;
+		}
+
+		// if the player has been dead for one second longer than allowed by forcerespawn, 
+		// forcerespawn isn't on. Send the player off to an intermission camera until they 
+		// choose to respawn.
+		if (g_pGameRules->IsMultiplayer() && (gpGlobals->curtime > (m_flDeathTime + DEATH_ANIMATION_TIME)) && !IsObserver())
+		{
+			// go to dead camera. 
+			StartObserverMode(m_iObserverLastMode);
+		}
+
+		// wait for any button down,  or mp_forcerespawn is set and the respawn time is up
+		if (!fAnyButtonDown
+			&& !(g_pGameRules->IsMultiplayer() && forcerespawn.GetInt() > 0 && (gpGlobals->curtime > (m_flDeathTime + 5))))
+			return;
+
+		m_nButtons = 0;
+		m_iRespawnFrames = 0;
+
+		//Msg( "Respawn\n");
+
+		respawn(this, !IsObserver());// don't copy a corpse if we're in deathcam.
+		SetNextThink(TICK_NEVER_THINK);
 	}
-	
-// wait for any button down,  or mp_forcerespawn is set and the respawn time is up
-	if (!fAnyButtonDown 
-		&& !( g_pGameRules->IsMultiplayer() && forcerespawn.GetInt() > 0 && (gpGlobals->curtime > (m_flDeathTime + 5))) )
-		return;
-
-	m_nButtons = 0;
-	m_iRespawnFrames = 0;
-
-	//Msg( "Respawn\n");
-
-	respawn( this, !IsObserver() );// don't copy a corpse if we're in deathcam.
-	SetNextThink( TICK_NEVER_THINK );
 }
 
 /*
@@ -2607,22 +2816,10 @@ void CBasePlayer::ObserverUse( bool bIsPressed )
 
 void CBasePlayer::JumptoPosition(const Vector &origin, const QAngle &angles)
 {
-    Vector neworigin;
-    QAngle newangles;
-
-    // Clamp the position and angles to prevent crashes
-    neworigin.x = clamp( origin.x, MIN_COORD_FLOAT, MAX_COORD_FLOAT );
-    neworigin.y = clamp( origin.y, MIN_COORD_FLOAT, MAX_COORD_FLOAT );
-    neworigin.z = clamp( origin.z, MIN_COORD_FLOAT, MAX_COORD_FLOAT );
-
-    newangles.x = clamp( angles.x, MIN_COORD_FLOAT, MAX_COORD_FLOAT );
-    newangles.y = clamp( angles.y, MIN_COORD_FLOAT, MAX_COORD_FLOAT );
-    newangles.z = clamp( angles.z, MIN_COORD_FLOAT, MAX_COORD_FLOAT ); // not clamped in original valve's code, idk why
-
-    SetAbsOrigin( neworigin );
-    SetAbsVelocity( vec3_origin );    // stop movement
-    SetLocalAngles( newangles );
-    SnapEyeAngles( newangles );
+	SetAbsOrigin( origin );
+	SetAbsVelocity( vec3_origin );	// stop movement
+	SetLocalAngles( angles );
+	SnapEyeAngles( angles );
 }
 
 bool CBasePlayer::SetObserverTarget(CBaseEntity *target)
@@ -3817,7 +4014,6 @@ void CBasePlayer::HandleFuncTrain(void)
 	}
 }
 
-
 void CBasePlayer::PreThink(void)
 {						
 	if ( g_fGameOver || m_iPlayerLocked )
@@ -4256,8 +4452,11 @@ void CBasePlayer::SetSuitUpdate(const char *name, int fgroup, int iNoRepeatTime)
 	
 	
 	// Ignore suit updates if no suit
-	if ( !IsSuitEquipped() )
-		return;
+	if (!amod_nomap_restart.GetBool())
+	{
+		if (!IsSuitEquipped())
+			return;
+	}
 
 	if ( g_pGameRules->IsMultiplayer() )
 	{
@@ -4507,9 +4706,147 @@ void CBasePlayer::ForceOrigin( const Vector &vecOrigin )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
+extern ConVar amod_rain_enable;
+extern ConVar amod_rain_type;
+extern ConVar amod_rain_thunder;
+extern ConVar amod_rain_wait_min;
+extern ConVar amod_rain_wait_max;
+
+extern IVEngineClient* clientengine;
+
+void PlayRandomThunder();
+
+extern ConVar amod_do_core_timer;
+extern ConVar amod_do_citadel_timer;
+
 void CBasePlayer::PostThink()
 {
-	m_vecSmoothedVelocity = m_vecSmoothedVelocity * SMOOTHING_FACTOR + GetAbsVelocity() * ( 1 - SMOOTHING_FACTOR );
+	m_vecSmoothedVelocity = m_vecSmoothedVelocity * SMOOTHING_FACTOR + GetAbsVelocity() * (1 - SMOOTHING_FACTOR);
+
+	//alone mod
+	if (amod_standbob_enabled.GetBool() && IsAlive() && !engine->IsPaused())
+	{
+		if (GetAbsVelocity().Length() > 5)
+		{
+			f_dobob = gpGlobals->curtime + amod_standbob_wait.GetFloat();
+		}
+		else
+		{
+			if (gpGlobals->curtime >= f_dobob)
+			{
+				float xoffset = (amod_viewbob_scale_x.GetFloat() / 4) * sin((amod_viewbob_speed_x.GetFloat() / 4) * gpGlobals->curtime);
+				float yoffset = (amod_viewbob_scale_y.GetFloat() / 4) * sin((amod_viewbob_speed_y.GetFloat() / 4) * gpGlobals->curtime);
+
+				//z (or roll) axis can make you motion sick so i have to lower the values
+				float zoffset = (amod_viewbob_scale_z.GetFloat() / 12) * cos((amod_viewbob_speed_z.GetFloat() / 6) * gpGlobals->curtime);
+
+				ViewPunch(QAngle(xoffset, yoffset, zoffset));
+			}
+		}
+	}
+
+	if (gpGlobals->curtime >= m_fNextThunder)
+	{
+		if (amod_rain_thunder.GetBool() && amod_rain_enable.GetBool())
+			PlayRandomThunder();
+
+		m_fNextThunder = gpGlobals->curtime + random->RandomFloat(15, 45);
+	}
+
+	if (gpGlobals->curtime >= m_fNextRainTime)
+	{
+		if (amod_rain_type.GetInt() == 2)
+		{
+			if (m_bInRain)
+			{
+				m_bInRain = false;
+				clientengine->ClientCmd_Unrestricted("amod_soundscape_stoprain");
+			}
+			else
+			{
+				CBaseEntity* FirstEnt = gEntList.FirstEnt();
+				while (FirstEnt)
+				{
+					//fire stuff
+					if (!Q_strcmp(FirstEnt->GetEntityName().ToCStr(), "_rainrel"))
+						FirstEnt->AcceptInput("Trigger", nullptr, nullptr, variant_t{}, 0);
+
+					FirstEnt = gEntList.NextEnt(FirstEnt);
+					continue;
+				}
+
+				m_bInRain = true;
+				clientengine->ClientCmd("amod_soundscape_startrain");
+			}
+		}
+		m_fNextRainTime = gpGlobals->curtime + random->RandomFloat(amod_rain_wait_min.GetFloat(), amod_rain_wait_max.GetFloat());
+	}
+
+	if (m_bInCoreTimer && amod_do_core_timer.GetBool())
+	{
+		int ctime = (int)(m_fCoreTimerTime - gpGlobals->curtime);
+		if (ctime == 1800 || ctime == 1500 || ctime == 1200 || ctime == 900 || ctime == 600 || ctime == 300 || ctime == 120 || ctime == 60 || ctime == 30 || ctime == 10)
+		{
+			char buf[128];
+			Q_snprintf(buf, sizeof(buf), "%d:%02d Minutes Till Core Collapse", (int)(ctime / 60), (int)((int)ctime % 60));
+			UTIL_HudHintText(this, buf);
+		}
+	
+		if (ctime <= 0)
+		{
+			m_bInCoreTimer = false;
+			m_bInLoadSaveTime = true;
+			m_bInExpSound = true;
+			m_fStartExpSound = gpGlobals->curtime + 2.0f;
+			m_fStartLoadSaveTime = gpGlobals->curtime + 9.0f;
+			m_Local.m_iHideHUD |= HIDEHUD_ALL;
+			AddFlag(FL_FROZEN);
+			UTIL_ScreenFade(this, color32{ 0, 0, 0, 255 }, 1.5, 1.5, FFADE_STAYOUT | FFADE_OUT);
+
+			UTIL_HudHintText(this, "0:00 Minutes Till Core Collapse");
+		}
+	}
+	
+	if (m_bInCitadelTimer && amod_do_citadel_timer.GetBool())
+	{
+		int ctime = (int)(m_fCitadelTimerTime - gpGlobals->curtime);
+		if (ctime == 1800 || ctime == 1500 || ctime == 1200 || ctime == 900 || ctime == 600 || ctime == 300 || ctime == 120 || ctime == 60 || ctime == 30 || ctime == 10)
+		{
+			char buf[128];
+			Q_snprintf(buf, sizeof(buf), "%d:%02d Minutes Till Citadel Collapse", (int)(ctime / 60), (int)((int)ctime % 60));
+			UTIL_HudHintText(this, buf);
+		}
+	
+		if (ctime <= 0)
+		{
+			m_bInCitadelTimer = false;
+			m_bInLoadSaveTime = true;
+			m_bInExpSound = true;
+			m_fStartExpSound = gpGlobals->curtime + 2.0f;
+			m_fStartLoadSaveTime = gpGlobals->curtime + 9.0f;
+			m_Local.m_iHideHUD |= HIDEHUD_ALL;
+			AddFlag(FL_FROZEN);
+			UTIL_ScreenFade(this, color32{ 0, 0, 0, 255 }, 1.5, 1.5, FFADE_STAYOUT | FFADE_OUT);
+
+			UTIL_HudHintText(this, "0:00 Minutes Till Citadel Explosion");
+		}
+	}
+
+	if ((m_bInLoadSaveTime && (int)(m_fStartLoadSaveTime - gpGlobals->curtime) <= 0))
+	{
+		engine->ClientCommand(edict(), "reload");
+	}
+	if (m_bInExpSound && (int)(m_fStartExpSound - gpGlobals->curtime) <= 0)
+	{
+		static ConCommand* playgamesound = cvar->FindCommand("playgamesound");
+		if (playgamesound)
+		{
+			CCommand cmd;
+			cmd.Tokenize("playgamesound explode_6");
+			playgamesound->Dispatch(cmd);
+		}
+		m_bInExpSound = false;
+	}
 
 	if ( !g_fGameOver && !m_iPlayerLocked )
 	{
@@ -4662,7 +4999,11 @@ void CBasePlayer::PostThinkVPhysics( void )
 	}
 
 	int collisionState = VPHYS_WALK;
-	if ( GetMoveType() == MOVETYPE_NOCLIP || GetMoveType() == MOVETYPE_OBSERVER )
+	if (GetMoveType() == MOVETYPE_NOCLIP)
+	{
+		collisionState = VPHYS_NOCLIP;
+	}
+	else if ( GetMoveType() == MOVETYPE_OBSERVER )
 	{
 		collisionState = VPHYS_NOCLIP;
 	}
@@ -4892,6 +5233,9 @@ void CBasePlayer::InitialSpawn( void )
 //-----------------------------------------------------------------------------
 void CBasePlayer::Spawn( void )
 {
+	//amod
+	f_dobob = gpGlobals->curtime + amod_standbob_wait.GetFloat();
+
 	// Needs to be done before weapons are given
 	if ( Hints() )
 	{
@@ -5050,6 +5394,19 @@ void CBasePlayer::Spawn( void )
 	UpdateLastKnownArea();
 
 	m_weaponFiredTimer.Invalidate();
+
+	m_bInRain = false;
+	m_fNextRainTime = gpGlobals->curtime + random->RandomFloat(amod_rain_wait_min.GetFloat(), amod_rain_wait_max.GetFloat());;
+	m_fNextThunder = gpGlobals->curtime + random->RandomFloat(15, 45);
+
+	m_bInCoreTimer = false;
+	m_bInCitadelTimer = false;
+	m_bInLoadSaveTime = false;
+	m_bInExpSound = false;
+	m_fCoreTimerTime = 0.0f;
+	m_fCitadelTimerTime = 0.0f;
+	m_fStartLoadSaveTime = 0.0f;
+	m_fStartExpSound = 0.0f;
 }
 
 void CBasePlayer::Activate( void )
@@ -7968,6 +8325,9 @@ void SendProxy_CropFlagsToPlayerFlagBitsLength( const SendProp *pProp, const voi
 
 		SendPropInt			( SENDINFO( m_nWaterLevel ), 2, SPROP_UNSIGNED ),
 		SendPropFloat		( SENDINFO( m_flLaggedMovementValue ), 0, SPROP_NOSCALE ),
+
+		//amod
+		SendPropBool		( SENDINFO(m_bInRain) ),
 
 	END_SEND_TABLE()
 

@@ -1434,12 +1434,7 @@ void CItemSoda::CanThink ( void )
 
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_TRIGGER );
-
-#ifdef HL1_DLL
-	UTIL_SetSize(this, Vector(-16, -16, 0), Vector(16, 16, 16));
-#else
 	UTIL_SetSize ( this, Vector ( -8, -8, 0 ), Vector ( 8, 8, 8 ) );
-#endif
 
 	SetThink ( NULL );
 	SetTouch ( &CItemSoda::CanTouch );
@@ -1487,24 +1482,38 @@ public:
 	CPrecipitation();
 	void	Spawn( void );
 
+	void InputDisable(inputdata_t& input);
+	void InputDoHack(inputdata_t& input)
+	{
+		m_bHack = true;
+	}
+
 	CNetworkVar( PrecipitationType_t, m_nPrecipType );
+	CNetworkVar( bool, m_bEnabled );
+	CNetworkVar( bool, m_bHack );
 };
 
 LINK_ENTITY_TO_CLASS( func_precipitation, CPrecipitation );
 
 BEGIN_DATADESC( CPrecipitation )
 	DEFINE_KEYFIELD( m_nPrecipType, FIELD_INTEGER, "preciptype" ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DoHack", InputDoHack ),
 END_DATADESC()
 
 // Just send the normal entity crap
 IMPLEMENT_SERVERCLASS_ST( CPrecipitation, DT_Precipitation)
-	SendPropInt( SENDINFO( m_nPrecipType ), Q_log2( NUM_PRECIPITATION_TYPES ) + 1, SPROP_UNSIGNED )
+	SendPropInt( SENDINFO( m_nPrecipType ), Q_log2( NUM_PRECIPITATION_TYPES ) + 1, SPROP_UNSIGNED ),
+	SendPropBool( SENDINFO( m_bEnabled ) ),
+	SendPropBool( SENDINFO( m_bHack ) ),
 END_SEND_TABLE()
 
 
 CPrecipitation::CPrecipitation()
 {
 	m_nPrecipType = PRECIPITATION_TYPE_RAIN; // default to rain.
+	m_bEnabled = true;
+	m_bHack = false;
 }
 
 void CPrecipitation::Spawn( void )
@@ -1527,6 +1536,11 @@ void CPrecipitation::Spawn( void )
 }
 #endif
 
+void CPrecipitation::InputDisable(inputdata_t& input)
+{
+	m_bEnabled = false;
+}
+
 //-----------------------------------------------------------------------------
 // EnvWind - global wind info
 //-----------------------------------------------------------------------------
@@ -1544,11 +1558,11 @@ public:
 	DECLARE_SERVERCLASS();
 
 private:
-//#ifdef POSIX
+#ifdef POSIX
 	CEnvWindShared m_EnvWindShared; // FIXME - fails to compile as networked var due to operator= problem
-//#else
-//	CNetworkVarEmbedded( CEnvWindShared, m_EnvWindShared );
-//#endif
+#else
+	CNetworkVarEmbedded( CEnvWindShared, m_EnvWindShared );
+#endif
 };
 
 LINK_ENTITY_TO_CLASS( env_wind, CEnvWind );
